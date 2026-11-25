@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Form - ptreport design system</title>
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="components.css">
+<link rel="icon" href="data:,">
+</head>
+<body>
+<svg class="visually-hidden" aria-hidden="true" focusable="false"><defs><symbol id="i-chevron-left" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></symbol><symbol id="i-arrow-up" viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></symbol><symbol id="i-arrow-down" viewBox="0 0 24 24"><path d="M12 5v14M6 13l6 6 6-6"/></symbol><symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol><symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol><symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol><symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol><symbol id="i-chevron-right" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol><symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/></symbol><symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/></symbol><symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11M7 11l5 5 5-5M5 20h14"/></symbol><symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V5M7 9l5-5 5 5M5 20h14"/></symbol><symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.2v.1"/></symbol><symbol id="i-check-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/></symbol><symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5M12 8v.1"/></symbol><symbol id="i-external" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5H5V6h5"/></symbol><symbol id="i-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/></symbol><symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 4.5-3.2 7.6-8 9-4.8-1.4-8-4.5-8-9V6z"/></symbol><symbol id="i-slash-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M6 18L18 6"/></symbol><symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20l1-4L16 5l3 3L8 19zM14 7l3 3"/></symbol><symbol id="i-spinner" viewBox="0 0 24 24"><path d="M12 3.5a8.5 8.5 0 1 0 8.5 8.5"/></symbol><symbol id="i-file" viewBox="0 0 24 24"><path d="M7 3h7l4 4v14H7zM14 3v4h4"/></symbol><symbol id="i-list" viewBox="0 0 24 24"><path d="M5 7h14M5 12h14M5 17h14"/></symbol><symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 6h6l2 2h10v11H3z"/></symbol></defs></svg>
+<header class="topbar"><a class="brand" href="index.html">ptreport</a><nav aria-label="Design system"><a class="nav-link" href="index.html">Overview</a><a class="nav-link" href="components.html">All on one page</a></nav></header>
+<main class="container">
+<nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="index.html">Design system</a><svg class="icon" aria-hidden="true"><use href="#i-chevron-right"/></svg></li><li aria-current="page">Form</li></ol></nav>
+<nav class="ds-toc" aria-label="Component groups"><a href="foundations.html">Foundations</a><a href="actions.html">Actions</a><a href="form.html" aria-current="page">Form</a><a href="cvss.html">CVSS</a><a href="navigation.html">Navigation</a><a href="overlays.html">Overlays</a><a href="content.html">Content</a><a href="evidence.html">Evidence and code</a><a href="feedback.html">Feedback</a><a href="report-document.html">Report document (light palette)</a></nav>
+<section class="ds-section ds-page" id="form" data-section="form" data-section-label="Form" aria-labelledby="form-h"><h1 id="form-h">Form</h1>
+<div class="ds-block"><h2>Text input</h2><div class="ds-states">
+<div class="ds-state"><span class="ds-cap">default</span><div class="field"><label for="in-1">Vulnerability title <span class="req" aria-hidden="true">*</span></label><input class="input" id="in-1" name="in-1" value="Stored Cross-Site Scripting in comment field" autocomplete="off"></div></div>
+<div class="ds-state"><span class="ds-cap">placeholder</span><div class="field"><label for="in-2">Vulnerability title</label><input class="input" id="in-2" name="in-2" placeholder="Stored Cross-Site Scripting in comment field" autocomplete="off"></div></div>
+<div class="ds-state"><span class="ds-cap">hover</span><div class="field"><label for="in-3">Vulnerability title</label><input class="input is-hover" id="in-3" name="in-3" value="Stored Cross-Site Scripting in comment field" autocomplete="off"></div></div>
+<div class="ds-state"><span class="ds-cap">focus-visible</span><div class="field"><label for="in-4">Vulnerability title</label><input class="input is-focus" id="in-4" name="in-4" value="Stored Cross-Site Scripting in comment field" autocomplete="off"></div></div>
+<div class="ds-state"><span class="ds-cap">error</span><div class="field"><label for="in-5">Vulnerability title <span class="req" aria-hidden="true">*</span></label><input class="input" id="in-5" name="in-5" aria-invalid="true" aria-describedby="in-5-e" autocomplete="off"><p class="field-error" id="in-5-e"><svg class="icon" aria-hidden="true"><use href="#i-alert"/></svg><span>Title is required.</span></p></div></div>
+<div class="ds-state"><span class="ds-cap">disabled</span><div class="field"><label for="in-6">Report prefix</label><input class="input" id="in-6" name="in-6" value="ACME" disabled></div></div>
+</div></div>
+<div class="ds-block"><h2>Combobox with datalist (CWE)</h2><div class="grid-2">
+<div class="field"><label for="cwe">CWE</label><input class="input is-mono" id="cwe" name="cwe" list="cwe-list" value="CWE-89" autocomplete="off" aria-describedby="cwe-h"><p class="hint" id="cwe-h">Improper Neutralization of Special Elements used in an SQL Command ('SQL Injection')</p></div>
+<div class="field"><label for="cwe-b">CWE</label><input class="input is-mono" id="cwe-b" name="cwe-b" list="cwe-list" placeholder="CWE-79" autocomplete="off"><p class="hint" id="cwe-b-h">Start typing a number or pick from the list.</p></div>
+</div><datalist id="cwe-list"><option value="CWE-89">CWE-89 Improper Neutralization of Special Elements used in an SQL Command</option><option value="CWE-639">CWE-639 Authorization Bypass Through User-Controlled Key</option><option value="CWE-79">CWE-79 Improper Neutralization of Input During Web Page Generation</option><option value="CWE-284">CWE-284 Improper Access Control</option><option value="CWE-693">CWE-693 Protection Mechanism Failure</option></datalist></div>
+<div class="ds-block"><h2>Select</h2><div class="ds-states">
+<div class="ds-state"><span class="ds-cap">default</span><div class="field"><label for="sel-1">Status</label><div class="select-wrap"><select class="select" id="sel-1" name="sel-1"><option>Open</option><option>Fixed</option><option>Risk accepted</option><option>False positive</option></select><svg class="icon" aria-hidden="true"><use href="#i-chevron-down"/></svg></div></div></div>
+<div class="ds-state"><span class="ds-cap">focus-visible</span><div class="field"><label for="sel-2">Status</label><div class="select-wrap"><select class="select is-focus" id="sel-2" name="sel-2"><option>Risk accepted</option></select><svg class="icon" aria-hidden="true"><use href="#i-chevron-down"/></svg></div></div></div>
+<div class="ds-state"><span class="ds-cap">error</span><div class="field"><label for="sel-3">Severity</label><div class="select-wrap"><select class="select" id="sel-3" name="sel-3" aria-invalid="true"><option value="">Select</option><option>Critical</option></select><svg class="icon" aria-hidden="true"><use href="#i-chevron-down"/></svg></div><p class="field-error" id="sel-3-e"><svg class="icon" aria-hidden="true"><use href="#i-alert"/></svg><span>Choose a severity.</span></p></div></div>
+<div class="ds-state"><span class="ds-cap">disabled</span><div class="field"><label for="sel-4">Status</label><div class="select-wrap"><select class="select" id="sel-4" name="sel-4" disabled><option>Open</option></select><svg class="icon" aria-hidden="true"><use href="#i-chevron-down"/></svg></div></div></div>
+</div></div>
+<div class="ds-block"><h2>Textarea</h2><div class="stack">
+<div class="field"><label for="ta-1">Description</label><textarea class="textarea" id="ta-1" name="ta-1" rows="3">Parametr `id` jest bezpośrednio konkatenowany z zapytaniem SQL.</textarea><p class="hint" id="ta-1-h">What the vulnerability is and where it was found. Prose fields stay within 70ch.</p></div>
+<div class="field"><label for="ta-2">Proof of Concept</label><textarea class="textarea is-mono" id="ta-2" name="ta-2" rows="4">1. Wyślij żądanie z payloadem boolean-based:
+```
+sqlmap -u 'https://api.acme.example/v2/orders?id=1' --batch --dbs
+```</textarea><p class="hint" id="ta-2-h">Mono variant for PoC, HTTP and references.</p></div>
+<div class="field"><label for="ta-3">Remediation</label><textarea class="textarea" id="ta-3" name="ta-3" rows="2" aria-invalid="true" aria-describedby="ta-3-e"></textarea><p class="field-error" id="ta-3-e"><svg class="icon" aria-hidden="true"><use href="#i-alert"/></svg><span>Remediation is required before export.</span></p></div>
+<div class="field"><label for="ta-4">Impact</label><textarea class="textarea" id="ta-4" name="ta-4" rows="2" disabled>Atakujący bez uwierzytelnienia może odczytać i zmodyfikować całą bazę danych.</textarea></div>
+</div></div>
+<div class="ds-block"><h2>Checkbox and radio</h2><div class="ds-states">
+<div class="ds-state"><span class="ds-cap">target row, default</span><label class="check"><input type="checkbox" name="t1"><span class="check-text"><strong>Admin panel</strong><span class="mono">https://admin.acme.example</span></span></label></div>
+<div class="ds-state"><span class="ds-cap">checked</span><label class="check"><input type="checkbox" name="t2" checked><span class="check-text"><strong>Customer portal</strong><span class="mono">https://portal.acme.example</span></span></label></div>
+<div class="ds-state"><span class="ds-cap">hover</span><label class="check is-hover"><input type="checkbox" name="t3"><span class="check-text"><strong>Public API</strong><span class="mono">https://api.acme.example/v2</span></span></label></div>
+<div class="ds-state"><span class="ds-cap">focus-visible</span><label class="check"><input type="checkbox" name="t4" class="is-focus"><span class="check-text"><strong>Public API</strong></span></label></div>
+<div class="ds-state"><span class="ds-cap">disabled</span><label class="check"><input type="checkbox" name="t5" disabled><span class="check-text"><strong>Corporate LAN</strong></span></label></div>
+<div class="ds-state"><span class="ds-cap">disabled, checked</span><label class="check"><input type="checkbox" name="t6" disabled checked><span class="check-text"><strong>Corporate LAN</strong></span></label></div>
+<div class="ds-state"><span class="ds-cap">error</span><label class="check"><input type="checkbox" name="t7" aria-invalid="true"><span class="check-text"><strong>Confirm deletion</strong></span></label></div>
+</div>
+<fieldset class="stack"><legend class="label">Report language</legend><div class="cluster">
+<label class="check"><input type="radio" name="lang" value="pl" checked><span>Polish</span></label>
+<label class="check"><input type="radio" name="lang" value="en"><span>English</span></label>
+<label class="check"><input type="radio" name="lang" value="de" disabled><span>Deutsch</span></label></div></fieldset></div>
+<div class="ds-block"><h2>File input</h2><div class="ds-states">
+<div class="ds-state"><span class="ds-cap">default</span><div class="field"><label for="fi-1">Export file</label><input class="file-input" id="fi-1" name="fi-1" type="file" accept=".json,application/json"></div></div>
+<div class="ds-state"><span class="ds-cap">error</span><div class="field"><label for="fi-2">Export file</label><input class="file-input" id="fi-2" name="fi-2" type="file" aria-invalid="true" aria-describedby="fi-2-e"><p class="field-error" id="fi-2-e"><svg class="icon" aria-hidden="true"><use href="#i-alert"/></svg><span>Choose a .json file exported from ptreport.</span></p></div></div>
+<div class="ds-state"><span class="ds-cap">disabled</span><div class="field"><label for="fi-3">Export file</label><input class="file-input" id="fi-3" name="fi-3" type="file" disabled></div></div>
+</div></div>
+<div class="ds-block"><h2>Field anatomy</h2><p class="ds-note">Label above, control, help text, then error with icon. Required is marked with an asterisk and <code>required</code>; errors set <code>aria-invalid</code> and are linked with <code>aria-describedby</code>. The label is never replaced by the placeholder.</p></div>
+</section>
+<nav class="ds-pager" aria-label="Previous and next group"><a class="btn btn-secondary ds-pager-prev" href="actions.html"><svg class="icon" aria-hidden="true"><use href="#i-chevron-left"/></svg>Actions</a><a class="btn btn-secondary ds-pager-next" href="cvss.html">CVSS<svg class="icon" aria-hidden="true"><use href="#i-chevron-right"/></svg></a></nav>
+</main>
+<footer class="footer">Hanken Grotesk and JetBrains Mono, self-hosted, SIL OFL 1.1</footer>
+<script src="components.js"></script>
+</body>
+</html>

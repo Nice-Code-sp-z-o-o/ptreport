@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Overlays - ptreport design system</title>
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="components.css">
+<link rel="icon" href="data:,">
+</head>
+<body>
+<svg class="visually-hidden" aria-hidden="true" focusable="false"><defs><symbol id="i-chevron-left" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></symbol><symbol id="i-arrow-up" viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></symbol><symbol id="i-arrow-down" viewBox="0 0 24 24"><path d="M12 5v14M6 13l6 6 6-6"/></symbol><symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol><symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol><symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol><symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol><symbol id="i-chevron-right" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol><symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/></symbol><symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/></symbol><symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11M7 11l5 5 5-5M5 20h14"/></symbol><symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V5M7 9l5-5 5 5M5 20h14"/></symbol><symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.2v.1"/></symbol><symbol id="i-check-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/></symbol><symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5M12 8v.1"/></symbol><symbol id="i-external" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5H5V6h5"/></symbol><symbol id="i-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/></symbol><symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 4.5-3.2 7.6-8 9-4.8-1.4-8-4.5-8-9V6z"/></symbol><symbol id="i-slash-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M6 18L18 6"/></symbol><symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20l1-4L16 5l3 3L8 19zM14 7l3 3"/></symbol><symbol id="i-spinner" viewBox="0 0 24 24"><path d="M12 3.5a8.5 8.5 0 1 0 8.5 8.5"/></symbol><symbol id="i-file" viewBox="0 0 24 24"><path d="M7 3h7l4 4v14H7zM14 3v4h4"/></symbol><symbol id="i-list" viewBox="0 0 24 24"><path d="M5 7h14M5 12h14M5 17h14"/></symbol><symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 6h6l2 2h10v11H3z"/></symbol></defs></svg>
+<header class="topbar"><a class="brand" href="index.html">ptreport</a><nav aria-label="Design system"><a class="nav-link" href="index.html">Overview</a><a class="nav-link" href="components.html">All on one page</a></nav></header>
+<main class="container">
+<nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="index.html">Design system</a><svg class="icon" aria-hidden="true"><use href="#i-chevron-right"/></svg></li><li aria-current="page">Overlays</li></ol></nav>
+<nav class="ds-toc" aria-label="Component groups"><a href="foundations.html">Foundations</a><a href="actions.html">Actions</a><a href="form.html">Form</a><a href="cvss.html">CVSS</a><a href="navigation.html">Navigation</a><a href="overlays.html" aria-current="page">Overlays</a><a href="content.html">Content</a><a href="evidence.html">Evidence and code</a><a href="feedback.html">Feedback</a><a href="report-document.html">Report document (light palette)</a></nav>
+<section class="ds-section ds-page" id="overlays" data-section="overlays" data-section-label="Overlays" aria-labelledby="overlays-h"><h1 id="overlays-h">Overlays</h1>
+<div class="ds-block"><h2>Confirm dialog (native dialog)</h2>
+<div class="cluster"><button class="btn btn-danger" type="button" data-dialog-open="dlg-delete"><svg class="icon" aria-hidden="true"><use href="#i-trash"/></svg>Delete finding</button></div>
+<dialog class="modal" id="dlg-delete" aria-labelledby="dlg-delete-t"><form method="dialog"><div class="modal-body"><h2 id="dlg-delete-t">Delete ACME-001?</h2><p>Remaining findings will be renumbered.</p></div><div class="modal-foot"><button class="btn btn-ghost" value="cancel" autofocus>Cancel</button><button class="btn btn-danger-solid" value="confirm">Delete</button></div></form></dialog>
+<p class="ds-note">Opens with showModal, so focus is trapped and Escape closes it. Shadow only on overlays, with offset and blur.</p></div>
+<div class="ds-block"><h2>Toast</h2><div class="toast-stack is-static" role="region" aria-label="Notifications">
+<div class="flash flash-success" role="status"><svg class="icon" aria-hidden="true"><use href="#i-check-circle"/></svg><div class="flash-body"><span>Finding saved.</span></div><button class="btn btn-icon btn-sm btn-ghost" type="button" aria-label="Dismiss"><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg></button></div>
+<div class="flash flash-error" role="alert"><svg class="icon" aria-hidden="true"><use href="#i-alert"/></svg><div class="flash-body"><span>Import failed. The file is not a ptreport export.</span></div><button class="btn btn-icon btn-sm btn-ghost" type="button" aria-label="Dismiss"><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg></button></div></div>
+<div class="cluster"><button class="btn" type="button" data-toast="success">Show success toast</button><button class="btn" type="button" data-toast="error">Show error toast</button></div></div>
+<div class="ds-block"><h2>Not used in this app</h2><p class="ds-note">Popover, bottom sheet, tooltip (cells use the native title), cookie banner, drawer.</p></div>
+</section>
+<nav class="ds-pager" aria-label="Previous and next group"><a class="btn btn-secondary ds-pager-prev" href="navigation.html"><svg class="icon" aria-hidden="true"><use href="#i-chevron-left"/></svg>Navigation</a><a class="btn btn-secondary ds-pager-next" href="content.html">Content<svg class="icon" aria-hidden="true"><use href="#i-chevron-right"/></svg></a></nav>
+</main>
+<footer class="footer">Hanken Grotesk and JetBrains Mono, self-hosted, SIL OFL 1.1</footer>
+<script src="components.js"></script>
+</body>
+</html>

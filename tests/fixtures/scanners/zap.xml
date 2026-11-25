@@ -1,0 +1,77 @@
+<?xml version="1.0"?>
+<OWASPZAPReport programName="ZAP" version="2.15.0" generated="Mon, 18 Nov 2026 12:00:00">
+<site name="https://app.example.com" host="app.example.com" port="443" ssl="true">
+<alerts>
+<alertitem>
+  <pluginid>10038</pluginid>
+  <alertRef>10038-1</alertRef>
+  <alert>Content Security Policy (CSP) Header Not Set</alert>
+  <name>Content Security Policy (CSP) Header Not Set</name>
+  <riskcode>2</riskcode>
+  <confidence>3</confidence>
+  <riskdesc>Medium (High)</riskdesc>
+  <desc>&lt;p&gt;Content Security Policy (CSP) is an added layer of security that helps to detect and mitigate certain types of attacks &amp;amp; data injection.&lt;/p&gt;</desc>
+  <instances>
+    <instance><uri>https://app.example.com/</uri><method>GET</method><param></param><attack></attack><evidence></evidence></instance>
+    <instance><uri>https://app.example.com/login</uri><method>GET</method><param></param><attack></attack><evidence></evidence></instance>
+  </instances>
+  <count>2</count>
+  <solution>&lt;p&gt;Ensure that your web server is configured to set the Content-Security-Policy header.&lt;/p&gt;</solution>
+  <otherinfo></otherinfo>
+  <reference>&lt;p&gt;https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP&lt;/p&gt;&lt;p&gt;&lt;a href="https://owasp.org/www-community/controls/Content_Security_Policy"&gt;OWASP&lt;/a&gt;&lt;/p&gt;</reference>
+  <cweid>693</cweid>
+  <wascid>15</wascid>
+  <sourceid>3</sourceid>
+</alertitem>
+<alertitem>
+  <pluginid>40012</pluginid>
+  <alert>Cross Site Scripting (Reflected)</alert>
+  <name>Cross Site Scripting (Reflected)</name>
+  <riskcode>3</riskcode>
+  <confidence>2</confidence>
+  <desc>&lt;p&gt;Cross-site Scripting (XSS) is an attack technique.&lt;/p&gt;</desc>
+  <instances>
+    <instance><uri>https://app.example.com/search?q=x</uri><method>GET</method><param>q</param><attack>&lt;script&gt;alert(1);&lt;/script&gt;</attack><evidence>&lt;script&gt;alert(1);&lt;/script&gt;</evidence></instance>
+  </instances>
+  <count>1</count>
+  <solution>&lt;p&gt;Phase: Architecture and Design&lt;/p&gt;&lt;ul&gt;&lt;li&gt;Use a vetted library.&lt;/li&gt;&lt;li&gt;Encode output.&lt;/li&gt;&lt;/ul&gt;</solution>
+  <reference>&lt;p&gt;https://owasp.org/www-community/attacks/xss/&lt;/p&gt;</reference>
+  <cweid>79</cweid>
+</alertitem>
+<alertitem>
+  <pluginid>10027</pluginid>
+  <alert>Information Disclosure - Suspicious Comments</alert>
+  <riskcode>0</riskcode>
+  <confidence>1</confidence>
+  <desc>&lt;p&gt;The response appears to contain suspicious comments.&lt;/p&gt;</desc>
+  <instances><instance><uri>https://app.example.com/app.js</uri><method>GET</method><evidence>TODO</evidence></instance></instances>
+  <count>1</count>
+  <solution>&lt;p&gt;Remove all comments.&lt;/p&gt;</solution>
+  <cweid>200</cweid>
+</alertitem>
+<alertitem>
+  <pluginid>10020</pluginid>
+  <alert>Missing Anti-clickjacking Header</alert>
+  <riskcode>2</riskcode>
+  <confidence>0</confidence>
+  <desc>&lt;p&gt;False positive.&lt;/p&gt;</desc>
+  <cweid>1021</cweid>
+</alertitem>
+</alerts>
+</site>
+<site name="https://api.example.com" host="api.example.com" port="443" ssl="true">
+<alerts>
+<alertitem>
+  <pluginid>10038</pluginid>
+  <alert>Content Security Policy (CSP) Header Not Set</alert>
+  <riskcode>2</riskcode>
+  <confidence>3</confidence>
+  <desc>&lt;p&gt;Content Security Policy (CSP) is an added layer of security.&lt;/p&gt;</desc>
+  <instances><instance><uri>https://api.example.com/docs</uri><method>GET</method></instance></instances>
+  <count>1</count>
+  <solution>&lt;p&gt;Set the header.&lt;/p&gt;</solution>
+  <cweid>693</cweid>
+</alertitem>
+</alerts>
+</site>
+</OWASPZAPReport>

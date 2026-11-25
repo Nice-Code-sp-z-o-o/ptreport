@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% from "_macros.html" import post_button, input, icon, select %}
+{% set section = 'settings' %}
+{% block title %}Settings{% endblock %}
+{% block content %}
+<div class="stack-lg">
+  <h1>Settings</h1>
+  <section class="panel stack" id="finding-ids" aria-labelledby="ids-h">
+    <h2 id="ids-h">Finding IDs</h2>
+    <p class="prose">How findings are numbered in every report. A report can override the format in its details, and a single finding can have its own ID.</p>
+    {% if errors %}<p class="field-error" role="alert">Please fix the highlighted fields.</p>{% endif %}
+    <form method="post" action="{{ url_for('web.settings_finding_ids') }}" class="stack" novalidate data-validate>
+      <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+      <div class="grid-2">
+        {{ input('id_format', 'ID format', values, errors, required=True, maxlength=40, mono=True,
+                 placeholder='{prefix}-{n:3}',
+                 hint='{prefix} report prefix, {n} number, {n:4} number padded to 4 digits, {year} year of testing.') }}
+        {{ input('id_start', 'First number', values, errors, required=True, maxlength=4, mono=True, type='number',
+                 hint='Usually 1. Use 0 to start from …-000.') }}
+        {{ input('default_prefix', 'Default prefix for new reports', values, errors, required=True, maxlength=10, mono=True,
+                 pattern="[A-Za-z][A-Za-z0-9]{0,9}", title="1-10 letters/digits, starting with a letter") }}
+        {{ select('default_language', 'Default language of new reports', values, errors, ['en', 'pl'], {'en': 'English', 'pl': 'Polski'}) }}
+      </div>
+      {% if id_examples %}<p class="hint">Current format gives: <span class="mono">{{ id_examples|join(', ') }}</span></p>{% endif %}
+      <div><button class="btn btn-primary" type="submit">Save ID settings</button></div>
+    </form>
+  </section>
+  <section class="panel stack" id="branding" aria-labelledby="brand-h">
+    <h2 id="brand-h">Branding</h2>
+    <p class="prose">Used on the PDF and HTML reports: the colour of the cover band, headings and table headers, and your logo on the cover and in the page header.</p>
+    <form method="post" action="{{ url_for('web.settings_branding') }}" enctype="multipart/form-data" class="stack" novalidate data-validate>
+      <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+      <div class="grid-3">
+        <div class="field">
+          <label for="f-brand_color">Brand colour</label>
+          <div class="color-row">
+            <input class="color-swatch" type="color" value="#{{ brand.color }}" aria-label="Pick the brand colour" data-color-sync="f-brand_color">
+            <input class="input is-mono" id="f-brand_color" name="brand_color" value="#{{ brand.color }}" maxlength="7" pattern="#?[0-9A-Fa-f]{6}" title="Hex colour, e.g. #1D3557" required>
+          </div>
+          <p class="hint">Dark colours work best: white text sits on it on the cover.</p>
+        </div>
+        <div class="field">
+          <label for="f-logo">Logo (PNG or JPEG)</label>
+          <input class="file-input" id="f-logo" type="file" name="logo" accept="image/png,image/jpeg">
+          <p class="hint">Leave empty to keep the current logo.</p>
+        </div>
+        <div class="field">
+          <span class="label">Current logo</span>
+          {% if brand.logo %}<img class="logo-preview" src="{{ url_for('web.settings_branding_logo') }}" alt="Current logo">{% else %}<p class="muted">None, the company name is printed instead.</p>{% endif %}
+        </div>
+      </div>
+      <div class="cluster"><button class="btn btn-primary" type="submit">Save branding</button></div>
+    </form>
+    {% if brand.logo %}<div>{{ post_button(url_for('web.settings_branding_logo_delete'), 'Remove logo', 'btn btn-danger', 'Remove the logo?', icon_name='trash') }}</div>{% endif %}
+  </section>
+
+  <section class="panel stack" id="cwe" aria-labelledby="cwe-h">
+    <h2 id="cwe-h">CWE library</h2>
+    <p class="prose">The full MITRE CWE catalogue is built in. Write your own description and mitigation per CWE; reports grouped by CWE use them.</p>
+    <div><a class="btn" href="{{ url_for('web.cwe_library') }}">{{ icon('search') }}Open the CWE library</a></div>
+  </section>
+
+  <section class="panel stack" id="labels" aria-labelledby="labels-h">
+    <h2 id="labels-h">Report wording</h2>
+    <p class="prose">Your own names for severities, statuses and report headings, per report language (e.g. “New” instead of “Open”, “Won't fix” instead of “Risk accepted”). Empty = the default shown in grey.</p>
+    <details>
+      <summary class="btn btn-sm">{{ icon('edit') }}Edit labels{% if label_overrides.get('en') or label_overrides.get('pl') %} ({{ (label_overrides.get('en', {})|length) + (label_overrides.get('pl', {})|length) }} changed){% endif %}</summary>
+      <form method="post" action="{{ url_for('web.settings_labels') }}" class="stack labels-form" novalidate>
+        <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+        <div class="table-wrap" tabindex="0" role="region" aria-label="Labels, scrolls sideways">
+          <table class="table" aria-label="Report labels">
+            <thead><tr><th scope="col">Label</th><th scope="col">English</th><th scope="col">Polski</th></tr></thead>
+            <tbody>
+              {% for key, en, pl in label_rows %}
+                <tr>
+                  <td class="mono small">{{ key }}</td>
+                  <td><input class="input" name="en:{{ key }}" value="{{ label_overrides.get('en', {}).get(key, '') }}" placeholder="{{ en }}" maxlength="80" aria-label="{{ key }} in English"></td>
+                  <td><input class="input" name="pl:{{ key }}" value="{{ label_overrides.get('pl', {}).get(key, '') }}" placeholder="{{ pl }}" maxlength="80" aria-label="{{ key }} po polsku"></td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div class="cluster"><button class="btn btn-primary" type="submit">Save labels</button></div>
+      </form>
+    </details>
+  </section>
+
+  <section class="panel stack" id="pdf-template" aria-labelledby="tpl-h">
+    <h2 id="tpl-h">PDF template (LaTeX)</h2>
+    <p class="prose">PDF reports are typeset from a LaTeX template.
+      {% if custom_latex %}A <strong>custom template</strong> is active.{% else %}The <strong>default template</strong> is active.{% endif %}
+      Download the default, change it, and upload it here. Values printed with <code>\VAR{...}</code> are escaped for LaTeX automatically.</p>
+    <p class="hint">Engine: {% if latex_engine %}<span class="mono">{{ latex_engine[0] }}</span> ({{ latex_engine[1] }}){% else %}<strong>none found</strong> – re-run <code>./install.sh</code>, it installs Tectonic.{% endif %}</p>
+    <div class="cluster">
+      <a class="btn" href="{{ url_for('web.settings_latex_download', which='default') }}">{{ icon('download') }}Download default template</a>
+      {% if custom_latex %}<a class="btn" href="{{ url_for('web.settings_latex_download', which='current') }}">{{ icon('download') }}Download current template</a>{% endif %}
+    </div>
+    <form method="post" action="{{ url_for('web.settings_latex_upload') }}" enctype="multipart/form-data" class="stack" novalidate data-validate>
+      <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+      <div class="field">
+        <label for="f-tpl-file">Custom template (.tex)</label>
+        <input class="file-input" id="f-tpl-file" type="file" name="file" accept=".tex,text/x-tex,text/plain" required>
+        <p class="hint">It is checked against a sample report before it is saved.</p>
+      </div>
+      <div class="cluster"><button class="btn btn-primary" type="submit">{{ icon('upload') }}Upload template</button></div>
+    </form>
+    {% if custom_latex %}<div>{{ post_button(url_for('web.settings_latex_reset'), 'Use the default template', 'btn btn-danger', 'Remove the custom template and go back to the default?') }}</div>{% endif %}
+  </section>
+
+  <section class="panel stack" aria-labelledby="api-h">
+    <h2 id="api-h">API access (Burp extension)</h2>
+    <p class="prose">The Burp extension talks to <code>{{ api_base }}</code> and authenticates with this bearer token.</p>
+    <div class="token-row">
+      <input id="api-token" class="input is-mono" type="password" value="{{ api_token }}" readonly aria-label="API token" autocomplete="off">
+      <button class="btn" type="button" data-toggle-secret="api-token">Show</button>
+      <button class="btn" type="button" data-copy="api-token">Copy</button>
+    </div>
+    <p class="hint">You can also print it with <code>ptreport --show-api-token</code>.</p>
+    <div>{{ post_button(url_for('web.settings_regenerate_token'), 'Generate new token', 'btn btn-danger', 'Generate a new token? The old one stops working immediately.') }}</div>
+  </section>
+  <section class="panel stack" aria-labelledby="storage-h">
+    <h2 id="storage-h">Storage</h2>
+    <p class="prose">Database and secrets: <code>{{ data_dir }}</code></p>
+    <p class="hint">Back it up by copying this folder or exporting reports to JSON.</p>
+  </section>
+</div>
+{% endblock %}

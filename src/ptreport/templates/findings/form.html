@@ -1,0 +1,253 @@
+{% extends "base.html" %}
+{% from "_macros.html" import cvss_chip, input, textarea, select, field_error, post_button, severity_badge, vector_strip, icon, flash, crumbs %}
+{% block title %}{{ display_id ~ ' ' ~ finding.title if finding else 'New finding' }}{% endblock %}
+{% block content %}
+<div class="stack-lg">
+  {{ crumbs([('Reports', url_for('web.index'), False), (report.title, url_for('web.report_detail', report_id=report.id, _anchor='findings'), False), (display_id or 'New finding', None, (display_id is not none))]) }}
+  <div class="page-head">
+    <h1>{% if finding %}<span class="mono muted">{{ display_id }}</span> {{ finding.title }}{% else %}New finding{% endif %}</h1>
+    {% if finding %}<div class="cluster">{{ severity_badge(finding.severity) }}</div>{% endif %}
+  </div>
+  {% if errors %}{{ flash('error', 'Please fix the highlighted fields.') }}{% endif %}
+
+  {% if not finding and templates %}
+    <section class="panel stack" id="from-template" aria-labelledby="tpl-pick-h">
+      <h2 id="tpl-pick-h">Start from a template</h2>
+      <form method="get" action="{{ url_for('web.finding_new', report_id=report.id) }}" class="cluster">
+        <div class="field grow">
+          <label class="visually-hidden" for="f-template">Template</label>
+          <div class="select-wrap">
+            <select class="select" id="f-template" name="template">
+              {% for lang_code, lang_label in [(report.language, 'Report language'), ('en' if report.language == 'pl' else 'pl', 'Other language')] %}
+                <optgroup label="{{ lang_label }} ({{ lang_code|upper }})">
+                  {% for t in templates if t.language == lang_code %}<option value="{{ t.id }}">{{ t.title }}{% if t.cwe %} · {{ t.cwe }}{% endif %}</option>{% endfor %}
+                </optgroup>
+              {% endfor %}
+            </select>
+            {{ icon('chevron-down') }}
+          </div>
+        </div>
+        <button class="btn" type="submit">{{ icon('list') }}Use template</button>
+        <a class="btn btn-ghost" href="{{ url_for('web.templates_list') }}">Manage templates</a>
+      </form>
+      <p class="hint">Fills in the form below; nothing is saved until you create the finding.</p>
+    </section>
+  {% endif %}
+
+  <form method="post" class="stack-lg" id="finding-form" novalidate data-validate
+        action="{{ url_for('web.finding_edit', finding_id=finding.id) if finding else url_for('web.finding_new', report_id=report.id) }}">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+
+    <section class="panel stack-lg" aria-labelledby="overview-h">
+      <h2 id="overview-h">Overview</h2>
+      <div class="grid-title">
+        {{ input('external_id', 'Finding ID', values, errors, maxlength=32, mono=True, pattern="[A-Za-z0-9][A-Za-z0-9._:\\-]{0,31}", title="Letters, digits, . _ : -", placeholder=(display_id if display_id and not values.get('external_id') else report.finding_prefix ~ '-001'), hint='Optional. Empty = numbered automatically.') }}
+        {{ input('title', 'Vulnerability title', values, errors, required=True, maxlength=300, placeholder='Stored Cross-Site Scripting in comment field') }}
+      </div>
+      <div class="grid-3">
+        {{ input('cwe', 'CWE', values, errors, maxlength=12, mono=True, pattern="(?:[Cc][Ww][Ee]-)?[0-9]{1,5}", title="e.g. CWE-79", placeholder='CWE-79', list='cwe-list', hint=(values.get('cwe')|cwe_name) or 'Start typing a number or pick from the list') }}
+        {{ select('status', 'Status', values, errors, statuses, STATUS_LABELS['en']) }}
+        <div class="field" data-severity-field>
+          <label for="f-severity">Severity <span class="req" aria-hidden="true">*</span></label>
+          <div class="select-wrap">
+            <select class="select" id="f-severity" name="severity" required{% if errors.get('severity') %} aria-invalid="true" aria-describedby="severity-error"{% endif %}>
+              <option value="">— select —</option>
+              {% for s in severities %}<option value="{{ s }}"{% if values.get('severity') == s %} selected{% endif %}>{{ SEVERITY_LABELS['en'][s] }}</option>{% endfor %}
+            </select>
+            {{ icon('chevron-down') }}
+          </div>
+          <p class="hint" data-severity-hint>Your risk assessment. The CVSS rating is calculated separately below.</p>
+          {{ field_error(errors, 'severity') }}
+        </div>
+      </div>
+      <datalist id="cwe-list">
+        {% for id, name in cwe_choices %}<option value="{{ id }}" label="{{ id }} — {{ name }}">{{ id }} — {{ name }}</option>{% endfor %}
+      </datalist>
+      <div class="grid-3">
+        {{ select('confidence', 'Confidence', values, errors, confidence_levels, CONFIDENCE_LABELS['en'], blank='— not stated —') }}
+      </div>
+    </section>
+
+    {% include "findings/_cvss.html" %}
+
+    <section class="panel stack" id="targets" aria-labelledby="targets-h">
+      <div class="section-head">
+        <h2 id="targets-h">Affected targets</h2>
+        <button class="btn btn-sm" type="button" data-open-target-dialog hidden>{{ icon('plus') }}Add target</button>
+      </div>
+      <div class="check-list" data-target-list>
+        {% for t in targets %}
+          <label class="check"><input type="checkbox" name="target_ids" value="{{ t.id }}"{% if t.id in selected_targets %} checked{% endif %}>
+            <span class="check-text"><strong>{{ t.name }}</strong>{% if t.address %}<span class="mono">{{ t.address }}</span>{% endif %}</span></label>
+        {% endfor %}
+      </div>
+      <p class="muted" data-target-empty{% if targets %} hidden{% endif %}>This report has no targets yet. Add one here: it is linked to this finding right away.</p>
+      <p class="hint" data-target-fallback>
+        <a href="{{ url_for('web.target_new', report_id=report.id, return_to_finding=finding.id if finding else '') }}">Add a target on a separate page</a>{% if not finding %} (save this finding first to keep your text){% endif %}.
+      </p>
+      {{ field_error(errors, 'target_ids') }}
+    </section>
+
+    <section class="panel stack-lg" aria-labelledby="writeup-h">
+      <h2 id="writeup-h">Write-up</h2>
+      {{ textarea('description', 'Description', values, errors, rows=6, hint='What the vulnerability is and where it was found.') }}
+      {{ textarea('impact', 'Impact', values, errors, rows=4, hint='What an attacker can achieve.') }}
+      {{ textarea('technical_details', 'Technical details', values, errors, rows=8, mono=True, hint='Root cause, affected parameters/endpoints, versions. Use ``` fences for code.') }}
+      {{ textarea('poc', 'Proof of Concept', values, errors, rows=10, mono=True, hint='Reproduction steps, payloads, commands. Raw HTTP requests/responses go in "HTTP evidence" below.') }}
+      {{ textarea('remediation', 'Remediation', values, errors, rows=5) }}
+      {{ textarea('refs', 'References', values, errors, rows=3, mono=True, hint='One per line. http(s) links become clickable in the report.') }}
+    </section>
+
+    <section class="panel stack-lg" id="retest" aria-labelledby="retest-h">
+      <h2 id="retest-h">Retest</h2>
+      <p class="hint">Result of verifying the fix. Shown in the finding and in the "Retest summary" section; a change is recorded in the history.</p>
+      <div class="grid-3">
+        {{ select('retest_result', 'Retest result', values, errors, retest_results, RETEST_LABELS['en'], blank='— not retested —') }}
+        {{ input('retest_date', 'Retest date', values, errors, type='date') }}
+      </div>
+      {{ textarea('retest_notes', 'Retest notes', values, errors, rows=3, hint='What was checked and what was observed.') }}
+    </section>
+
+    <div class="save-bar">
+      <div class="cluster">
+        <button class="btn btn-primary" type="submit">{{ 'Save' if finding else 'Create finding' }}</button>
+        {% if finding %}<button class="btn" type="submit" name="save_and_back" value="1">Save and back to report</button>
+        <button class="btn btn-ghost" type="submit" form="save-template-form" title="Copies the saved write-up (without targets and evidence) to the template library">{{ icon('list') }}Save as template</button>{% endif %}
+        <a class="btn btn-ghost" href="{{ url_for('web.report_detail', report_id=report.id, _anchor='findings') }}">Cancel</a>
+      </div>
+    </div>
+  </form>
+
+  {% if finding %}
+    <form method="post" id="save-template-form" action="{{ url_for('web.finding_save_as_template', finding_id=finding.id) }}" hidden>
+      <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    </form>
+  {% endif %}
+
+  <dialog class="modal" id="target-dialog" aria-labelledby="target-dialog-title">
+    <form class="stack" data-quick-target="{{ url_for('web.target_quick_new', report_id=report.id) }}" novalidate>
+      <div class="modal-body stack">
+        <h2 id="target-dialog-title">Add target</h2>
+        {{ input('name', 'Name', {}, {}, required=True, maxlength=200, placeholder='Customer portal', prefix='qt-') }}
+        {{ select('kind', 'Type', {'kind': 'web'}, {}, target_kinds, TARGET_KIND_LABELS['en'], prefix='qt-') }}
+        {{ input('address', 'Address / URL / IP range', {}, {}, maxlength=2048, placeholder='https://portal.example.com, 10.0.0.0/24', prefix='qt-') }}
+        <p class="field-error" data-quick-target-error hidden role="alert"></p>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-ghost" type="button" data-close-target-dialog>Cancel</button>
+        <button class="btn btn-primary" type="submit">{{ icon('plus') }}Add and link</button>
+      </div>
+    </form>
+  </dialog>
+
+  {% if finding %}
+    <section class="panel stack-lg" id="evidence" aria-labelledby="evidence-h">
+      <h2 id="evidence-h">HTTP evidence <span class="muted">({{ evidence|length }})</span></h2>
+      {% for e in evidence %}
+        <article class="evidence" aria-labelledby="ev-{{ e.id }}-t">
+          <div class="evidence-head">
+            <div class="evidence-title"><h3 id="ev-{{ e.id }}-t">{{ e.title or ('Request #' ~ loop.index) }}</h3>{% if e.source != 'manual' %}<span class="chip pill-src">{{ e.source }}</span>{% endif %}</div>
+            {{ post_button(url_for('web.evidence_delete', evidence_id=e.id), 'Delete', 'btn btn-sm btn-danger', 'Delete this HTTP evidence?', icon_name='trash') }}
+          </div>
+          <div class="http-pair">
+            <div class="http-pane"><h4>Request</h4><pre class="http" tabindex="0" aria-label="Raw request">{{ e.request }}</pre></div>
+            <div class="http-pane"><h4>Response</h4><pre class="http" tabindex="0" aria-label="Raw response">{{ e.response or '—' }}</pre></div>
+          </div>
+        </article>
+      {% endfor %}
+      <form method="post" action="{{ url_for('web.evidence_new', finding_id=finding.id) }}" class="stack-lg" novalidate data-validate>
+        <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+        <h3>Add HTTP request / response</h3>
+        {{ input('title', 'Title', evidence_values, evidence_errors, maxlength=300, placeholder='Payload reflected in /search', prefix='ev-') }}
+        <div class="grid-2">
+          {{ textarea('request', 'Raw request', evidence_values, evidence_errors, rows=10, required=True, mono=True, maxlength=5000000, prefix='ev-') }}
+          {{ textarea('response', 'Raw response', evidence_values, evidence_errors, rows=10, mono=True, maxlength=5000000, prefix='ev-') }}
+        </div>
+        <div class="cluster"><button class="btn" type="submit">{{ icon('plus') }}Add evidence</button></div>
+      </form>
+    </section>
+
+    <section class="panel stack-lg" id="screenshots" aria-labelledby="shots-h">
+      <h2 id="shots-h">Screenshots <span class="muted">({{ attachments|length }})</span></h2>
+      <p class="hint">Shown in the report as numbered figures, in this order. PNG or JPEG, up to 10 MB each.</p>
+      {% if attachments %}
+        <ul class="shot-list">
+          {% for a in attachments %}
+            <li class="shot">
+              <a class="shot-img" href="{{ url_for('web.attachment_file', attachment_id=a.id) }}" target="_blank" rel="noopener">
+                <img src="{{ url_for('web.attachment_file', attachment_id=a.id) }}" alt="{{ a.caption or ('Screenshot ' ~ loop.index) }}" loading="lazy">
+              </a>
+              <form method="post" action="{{ url_for('web.attachment_caption', attachment_id=a.id) }}" class="shot-caption">
+                <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+                <label class="visually-hidden" for="cap-{{ a.id }}">Caption of screenshot {{ loop.index }}</label>
+                <input class="input" id="cap-{{ a.id }}" name="caption" value="{{ a.caption }}" maxlength="300" placeholder="Caption">
+                <button class="btn btn-sm" type="submit">Save</button>
+              </form>
+              <div class="shot-meta"><span class="muted small">{{ (a.size / 1024)|round|int }} KB · {{ a.mime.split('/')[1]|upper }}</span>
+                {{ post_button(url_for('web.attachment_delete', attachment_id=a.id), 'Delete', 'btn btn-sm btn-danger', 'Delete this screenshot?', icon_name='trash') }}</div>
+            </li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+      <form method="post" action="{{ url_for('web.attachment_new', finding_id=finding.id) }}" enctype="multipart/form-data" class="stack" novalidate data-validate>
+        <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+        <h3>Add screenshot</h3>
+        <div class="grid-2">
+          <div class="field">
+            <label for="f-att-file">Image <span class="req" aria-hidden="true">*</span></label>
+            <input class="file-input" id="f-att-file" type="file" name="file" accept="image/png,image/jpeg" required
+              {%- if attachment_errors.get('file') %} aria-invalid="true" aria-describedby="att-file-error"{% endif %}>
+            {{ field_error(attachment_errors, 'file', 'att-') }}
+          </div>
+          {{ input('caption', 'Caption', attachment_values, attachment_errors, maxlength=300, placeholder='XSS attack execution', prefix='att-') }}
+        </div>
+        <div class="cluster"><button class="btn" type="submit">{{ icon('upload') }}Add screenshot</button></div>
+      </form>
+    </section>
+
+    <section class="panel stack-lg" id="history" aria-labelledby="history-h">
+      <h2 id="history-h">History <span class="muted">({{ history|length }})</span></h2>
+      <p class="hint">Status changes are recorded automatically when you save the finding. Add retest notes and other events here.{% if not report.show_finding_history %} This report hides finding history in exports.{% endif %}</p>
+      {% if history %}
+        <ul class="history-list">
+          {% for h in history %}
+            <li class="history-row">
+              <div class="history-main"><span class="mono muted">{{ h.date or '' }}</span>{% if h.author %}<span class="muted">{{ h.author }}</span>{% endif %}<span>{{ h.text }}</span></div>
+              <details class="history-edit">
+                <summary class="btn btn-sm">{{ icon('edit') }}Edit<span class="visually-hidden"> entry from {{ h.date }}</span></summary>
+                <form method="post" action="{{ url_for('web.history_edit', entry_id=h.id) }}" class="stack" novalidate data-validate>
+                  <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+                  <div class="grid-history">
+                    {{ input('date', 'Date', h, {}, type='date', required=True, prefix='h' ~ h.id ~ '-') }}
+                    {{ input('author', 'Author', h, {}, maxlength=200, prefix='h' ~ h.id ~ '-') }}
+                    {{ input('description', 'Note' if h.kind == 'status' else 'Description', h, {}, maxlength=300, required=h.kind != 'status', prefix='h' ~ h.id ~ '-') }}
+                  </div>
+                  <div class="cluster"><button class="btn btn-primary btn-sm" type="submit">Save</button></div>
+                </form>
+              </details>
+              {{ post_button(url_for('web.history_delete', entry_id=h.id), 'Delete', 'btn btn-sm btn-danger', 'Delete this history entry?', icon_name='trash') }}
+            </li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+      <form method="post" action="{{ url_for('web.history_new', finding_id=finding.id) }}" class="stack" novalidate data-validate>
+        <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+        <h3>Add entry</h3>
+        <div class="grid-history">
+          {{ input('date', 'Date', history_values, history_errors, type='date', required=True, prefix='hn-') }}
+          {{ input('author', 'Author', history_values, history_errors, maxlength=200, placeholder='Jan Kowalski', prefix='hn-') }}
+          {{ input('description', 'Description', history_values, history_errors, required=True, maxlength=300, placeholder='Retest: vulnerability still present', prefix='hn-') }}
+        </div>
+        <div class="cluster"><button class="btn" type="submit">{{ icon('plus') }}Add entry</button></div>
+      </form>
+    </section>
+
+    <section class="panel stack" aria-labelledby="danger-h">
+      <h2 id="danger-h">Danger zone</h2>
+      <p class="muted">Remaining findings will be renumbered after deletion.</p>
+      <div>{{ post_button(url_for('web.finding_delete', finding_id=finding.id), 'Delete finding', 'btn btn-danger', 'Delete ' ~ display_id ~ '? Remaining findings will be renumbered.', icon_name='trash') }}</div>
+    </section>
+  {% endif %}
+</div>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='cvss.js') }}"></script><script src="{{ url_for('static', filename='targets.js') }}"></script>{% endblock %}

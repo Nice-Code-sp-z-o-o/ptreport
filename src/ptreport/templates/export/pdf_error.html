@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% from "_macros.html" import crumbs %}
+{% block title %}PDF export failed{% endblock %}
+{% block content %}
+<div class="stack-lg">
+  {{ crumbs([('Reports', url_for('web.index'), False), (report.title, url_for('web.report_detail', report_id=report.id), False), ('PDF export', None, False)]) }}
+  <h1>PDF export failed</h1>
+  <section class="panel stack">
+    <p class="prose">{{ error }}</p>
+    {% if log %}
+      <h2>LaTeX log (excerpt)</h2>
+      <pre class="http" tabindex="0" aria-label="LaTeX log">{{ log }}</pre>
+    {% endif %}
+    <p class="hint">If you use a custom template, check it in Settings → PDF template, or switch back to the default.
+      You can also download the LaTeX sources (Export → LaTeX sources) and compile them yourself.</p>
+    <div class="cluster">
+      <a class="btn" href="{{ url_for('web.report_detail', report_id=report.id) }}">Back to the report</a>
+      <a class="btn" href="{{ url_for('web.settings', _anchor='pdf-template') }}">PDF template settings</a>
+    </div>
+  </section>
+</div>
+{% endblock %}

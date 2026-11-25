@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, crumbs, severity_badge %}
+{% block title %}Review scanner import · {{ report.title }}{% endblock %}
+{% block content %}
+<div class="stack-lg">
+  {{ crumbs([('Reports', url_for('web.index'), False), (report.title, url_for('web.report_detail', report_id=report.id), False), ('Scanner import', None, True)]) }}
+  <div class="page-head">
+    <div class="stack">
+      <h1>Review scanner import</h1>
+      <p class="muted">{{ format_label }}{% if staged.filename %} · <span class="mono">{{ staged.filename }}</span>{% endif %} · {{ parsed.findings|length }} finding(s), {{ parsed.targets|length }} target(s)</p>
+    </div>
+  </div>
+  {% if parsed.warnings %}
+    <details class="panel">
+      <summary>{{ icon('info') }} {{ parsed.warnings|length }} note(s) from reading the file</summary>
+      <ul class="prose">{% for w in parsed.warnings[:50] %}<li>{{ w }}</li>{% endfor %}</ul>
+    </details>
+  {% endif %}
+  <form method="post" action="{{ url_for('web.scan_import_apply', import_id=staged.id) }}" class="stack-lg">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    {% if parsed.findings %}
+    <section class="panel stack" aria-labelledby="sf-h">
+      <div class="section-head">
+        <h2 id="sf-h">Findings</h2>
+        <label class="check check-inline"><input type="checkbox" data-check-all="finding" checked><span class="check-text">Select all</span></label>
+      </div>
+      <p class="hint">Each finding is created as "Open" with the scanner's description, CVSS, CWE and evidence. Review and rewrite it before the report goes out.</p>
+      <div class="table-wrap" tabindex="0" role="region" aria-label="Findings found in the file">
+        <table class="table">
+          <thead><tr><th scope="col"><span class="visually-hidden">Import</span></th><th scope="col">Title</th><th scope="col">Severity</th><th scope="col">CVSS</th><th scope="col">CWE</th><th scope="col">Targets</th><th scope="col">Evidence</th></tr></thead>
+          <tbody>
+            {% for f in parsed.findings %}
+              <tr>
+                <td><input type="checkbox" name="finding" value="{{ f.key }}" id="sf-{{ f.key }}" checked aria-label="Import {{ f.title }}"></td>
+                <td class="col-title"><label for="sf-{{ f.key }}">{{ f.title }}</label></td>
+                <td>{{ severity_badge(f.severity) }}</td>
+                <td class="mono">{% if f.cvss_score is not none %}{{ '%.1f'|format(f.cvss_score) }} <span class="muted small">v{{ f.cvss_version }}</span>{% else %}—{% endif %}</td>
+                <td class="col-cwe">{{ f.cwe }}</td>
+                <td>{% if f.target_keys %}<div class="chips">{% for k in f.target_keys[:3] %}<span class="chip">{{ target_names[k] }}</span>{% endfor %}{% if f.target_keys|length > 3 %}<span class="chip">+{{ f.target_keys|length - 3 }}</span>{% endif %}</div>{% endif %}</td>
+                <td class="mono">{{ f.evidence|length or '' }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+    {% endif %}
+    {% if parsed.targets %}
+    <section class="panel stack" aria-labelledby="st-h">
+      <div class="section-head">
+        <h2 id="st-h">Targets</h2>
+        <label class="check check-inline"><input type="checkbox" data-check-all="target" checked><span class="check-text">Select all</span></label>
+      </div>
+      <p class="hint">Targets of the selected findings are always added. Targets already in the report (same address) are reused, not duplicated.</p>
+      <div class="check-list">
+        {% for t in parsed.targets %}
+          <label class="check"><input type="checkbox" name="target" value="{{ t.key }}" checked>
+            <span class="check-text"><strong>{{ t.name }}</strong>{% if t.address %}<span class="mono">{{ t.address }}</span>{% endif %}{% if t.key in existing %}<span class="chip">already in report</span>{% endif %}</span></label>
+        {% endfor %}
+      </div>
+    </section>
+    {% endif %}
+    <div class="save-bar">
+      <div class="cluster">
+        <button class="btn btn-primary" type="submit">{{ icon('check') }}Import selected</button>
+        <button class="btn btn-ghost" type="submit" name="discard" value="1">Discard</button>
+      </div>
+    </div>
+  </form>
+</div>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='scan-import.js') }}"></script>{% endblock %}

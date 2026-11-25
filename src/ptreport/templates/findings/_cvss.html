@@ -1,0 +1,25 @@
+{% from "_macros.html" import cvss_chip, vector_strip, field_error %}
+    <section class="panel stack-lg" data-cvss aria-labelledby="cvss-h">
+      <h2 id="cvss-h">CVSS</h2>
+      {% set current_version = values.get('cvss_version') or '' %}
+      <div class="segmented" role="radiogroup" aria-label="CVSS version">
+        {% for v, label in [('4.0', 'CVSS 4.0'), ('3.1', 'CVSS 3.1'), ('3.0', 'CVSS 3.0'), ('2.0', 'CVSS 2.0'), ('', 'No CVSS')] %}
+          <label class="seg"><input type="radio" name="cvss_version" value="{{ v }}"{% if current_version == v %} checked{% endif %}><span>{{ label }}</span></label>
+        {% endfor %}
+      </div>
+      <div class="cvss-groups" data-cvss-metrics></div>
+      <div class="field" data-cvss-vector-field>
+        <label for="f-cvss_vector">Vector</label>
+        <input class="input is-mono input-prose" id="f-cvss_vector" name="cvss_vector" maxlength="512" value="{{ values.get('cvss_vector') or '' }}"
+               placeholder="Click the metrics above or paste a vector, e.g. CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H" autocomplete="off" spellcheck="false"
+               {%- if errors.get('cvss_vector') %} aria-invalid="true" aria-describedby="cvss_vector-error"{% endif %}>
+        {{ field_error(errors, 'cvss_vector') }}
+      </div>
+      <div class="vec-summary" data-cvss-result aria-live="polite">
+        {% if finding and finding.cvss_vector and finding.cvss_score is not none %}
+          <div class="vec-summary-head"><span class="vec-version">CVSS {{ finding.cvss_version }}</span>{{ cvss_chip(finding, large=True) }}</div>
+          {{ vector_strip(finding.cvss_vector, large=True) }}
+        {% endif %}
+      </div>
+      <script type="application/json" id="cvss-defs">{{ cvss_defs|tojson }}</script>
+    </section>

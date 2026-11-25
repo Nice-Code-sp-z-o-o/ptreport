@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% from "_macros.html" import input, textarea, select, flash, crumbs %}
+{% block title %}{{ 'Edit target' if target else 'New target' }}{% endblock %}
+{% block content %}
+<div class="stack-lg">
+  {{ crumbs([('Reports', url_for('web.index'), False), (report.title, url_for('web.report_detail', report_id=report.id), False), ('Edit target' if target else 'New target', None, False)]) }}
+  <h1>{{ 'Edit target' if target else 'New target' }}</h1>
+  {% if errors %}{{ flash('error', 'Please fix the highlighted fields.') }}{% endif %}
+  <form method="post" class="panel stack-lg" novalidate data-validate>
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    {% if values.get('return_to_finding') %}<input type="hidden" name="return_to_finding" value="{{ values.get('return_to_finding') }}">{% endif %}
+    <div class="grid-2">
+      {{ input('name', 'Name', values, errors, required=True, maxlength=200, placeholder='Customer portal') }}
+      {{ select('kind', 'Type', values, errors, kinds, TARGET_KIND_LABELS['en']) }}
+    </div>
+    {{ input('address', 'Address / URL / IP range', values, errors, maxlength=2048, mono=True, placeholder='https://portal.example.com, 10.0.0.0/24, com.example.app') }}
+    {{ textarea('description', 'Description / notes', values, errors, rows=4) }}
+    <div class="cluster">
+      <button class="btn btn-primary" type="submit">{{ 'Save target' if target else 'Add target' }}</button>
+      {% if not target %}<button class="btn" type="submit" name="add_another" value="1">Add and create another</button>{% endif %}
+      <a class="btn btn-ghost" href="{{ url_for('web.report_detail', report_id=report.id, _anchor='targets') }}">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

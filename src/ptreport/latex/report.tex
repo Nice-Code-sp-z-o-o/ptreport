@@ -1,0 +1,492 @@
+%# =====================================================================================================
+%# ptreport default LaTeX template - "Corporate Band"
+%#
+%# Jinja with LaTeX-friendly delimiters:
+%#   \VAR{value}          prints a value; it is ALWAYS escaped for LaTeX, so report content is safe
+%#   \BLOCK{if ...}       statements: if / for / set ... closed with \BLOCK{endif}, \BLOCK{endfor}
+%#   lines starting with %# are template comments (removed from the output)
+%# Filters: richtext, verbatim, verbatim_file, url, url_cwe, reference_list, image, asset, score,
+%#   cvss_rating_key, cvss_rating_label, vector_strip, cwe_name, tex.
+%# Data: report, brand (color, logo), versions, targets, findings, counts, severities, L (labels),
+%#   lang, cvss_header, show_finding_history, generated_at.
+%#
+%# Download it from Settings -> PDF template, edit, upload it back. Start with the EDIT HERE block.
+%# =====================================================================================================
+\documentclass[10pt,a4paper]{article}
+
+% ======================================================================================== EDIT HERE ==
+% Brand colour (Settings -> Branding). Replace with a fixed value such as {1D3557} if you prefer.
+\newcommand{\ptBrandHex}{\VAR{brand.color}}
+% Fonts: TeX Gyre Heros (Helvetica-like) for text, DejaVu Sans Mono for data. Any OTF/TTF works.
+\newcommand{\ptSetFonts}{%
+  \setmainfont{texgyreheros}[Extension=.otf, UprightFont=*-regular, BoldFont=*-bold, ItalicFont=*-italic, BoldItalicFont=*-bolditalic]%
+  \setmonofont{DejaVuSansMono}[Extension=.ttf, BoldFont=*-Bold, Scale=0.85]}
+% Logo (Settings -> Branding). Empty = the company name is printed instead.
+\def\ptLogoFile{\VAR{brand.logo|asset('logo')}}
+% Confidentiality label on the cover and in every footer (report field "Confidentiality label").
+\def\ptClassification{\VAR{report.classification}}
+% Severity colours (also used by the CVSS rating chips).
+\newcommand{\ptSeverityColors}{%
+  \definecolor{sevcritical}{HTML}{9E1C34}\definecolor{sevhigh}{HTML}{C4470F}\definecolor{sevmedium}{HTML}{B8860B}%
+  \definecolor{sevlow}{HTML}{2E7D4F}\definecolor{sevinfo}{HTML}{2F6DB5}\definecolor{sevnone}{HTML}{6B7680}}
+% ===================================================================================================
+
+\usepackage{fontspec}
+\ptSetFonts
+\usepackage[\BLOCK{if lang == 'pl'}polish\BLOCK{else}english\BLOCK{endif}]{babel}
+\usepackage[a4paper,top=26mm,bottom=24mm,left=20mm,right=20mm,headheight=16pt,headsep=8mm,footskip=11mm]{geometry}
+\usepackage[table]{xcolor}
+\usepackage{graphicx,array,tabularx,longtable,booktabs,fancyhdr,lastpage,titlesec,titletoc,enumitem,caption,needspace}
+\usepackage{tikz}
+\usepackage[most]{tcolorbox}
+\usepackage{fvextra}
+\usepackage[hidelinks,unicode]{hyperref}
+\usepackage{xurl}
+
+% ------------------------------------------------------------------------------------------ colours --
+\definecolor{brand}{HTML}{\ptBrandHex}
+\colorlet{brandsoft}{brand!7!white}
+\colorlet{brandline}{brand!35!white}
+\definecolor{ink}{HTML}{1A2128}
+\definecolor{muted}{HTML}{5A6570}
+\definecolor{line}{HTML}{D9DEE3}
+\definecolor{soft}{HTML}{F4F6F8}
+\ptSeverityColors
+\colorlet{tone0}{soft}\colorlet{tone1}{line}\colorlet{tone2}{muted!55}\colorlet{tone3}{ink!85}
+
+% -------------------------------------------------------------------------------------- typography --
+\color{ink}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.6em}
+\linespread{1.1}
+\setlist{itemsep=0.2em,topsep=0.3em,leftmargin=1.4em}
+\captionsetup{font={small,color=muted},labelfont={bf,color=brand},skip=6pt}
+\renewcommand{\arraystretch}{1.45}
+\newcolumntype{L}{>{\raggedright\arraybackslash}X}
+
+\titleformat{\section}{\LARGE\bfseries\color{ink}}{\textcolor{brand}{\thesection}}{0.7em}{}[\vspace{2pt}{\color{brandline}\titlerule[0.8pt]}]
+\titleformat{\subsection}{\large\bfseries\color{ink}}{\textcolor{brand}{\thesubsection}}{0.6em}{}
+\titleformat{\subsubsection}{\normalsize\bfseries\color{ink}}{\textcolor{brand}{\thesubsubsection}}{0.6em}{}
+\titlespacing*{\section}{0pt}{0.4em}{1.1em}
+\titlespacing*{\subsection}{0pt}{1.2em}{0.4em}
+\titlespacing*{\subsubsection}{0pt}{1em}{0.3em}
+\setcounter{secnumdepth}{3}
+\setcounter{tocdepth}{3}
+% Labels of the blocks inside a finding (Description, Impact ...): not part of the numbering.
+\newcommand{\ptBlockTitle}[1]{\par\needspace{8\baselineskip}\vspace{1.1em}{\small\bfseries\color{brand}\MakeUppercase{#1}}\par\nopagebreak\vspace{0.3em}}
+\titlecontents{section}[0pt]{\addvspace{0.7em}\bfseries}{\textcolor{brand}{\thecontentslabel}\quad}{}{\hfill\contentspage}
+\titlecontents{subsection}[4.3em]{\addvspace{0.1em}\small}{\contentslabel{2.4em}}{\hspace*{-2.4em}}{\titlerule*[0.6pc]{.}\contentspage}
+\titlecontents{subsubsection}[7.3em]{\small\color{muted}}{\contentslabel{3em}}{\hspace*{-3em}}{\titlerule*[0.6pc]{.}\contentspage}
+
+% -------------------------------------------------------------------------------- header / footer --
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\ifx\ptLogoFile\empty{\small\bfseries\color{brand}\VAR{report.vendor_name}}\else\raisebox{-0.3\height}{\includegraphics[height=6mm]{\ptLogoFile}}\fi}
+\fancyhead[R]{\small\color{muted}\VAR{report.title}}
+\fancyfoot[L]{\ifx\ptClassification\empty\else{\footnotesize\bfseries\color{brand}\ptClassification}\fi}
+\BLOCK{set year = (report.report_date or report.end_date or report.start_date or generated_at)[:4]}
+\fancyfoot[C]{\footnotesize\color{muted}\BLOCK{if report.vendor_name}\textcopyright{} \VAR{year} \VAR{report.vendor_name}\BLOCK{endif}\BLOCK{if report.report_version} · \VAR{L.version} \VAR{report.report_version}\BLOCK{endif}}
+\fancyfoot[R]{\footnotesize\color{muted}\thepage\,/\,\pageref*{LastPage}}
+\renewcommand{\headrule}{{\color{brandline}\hrule height 0.6pt}}
+\renewcommand{\footrulewidth}{0pt}
+
+% ---------------------------------------------------------------------------------------- elements --
+% Severity: the tester's assessment, a filled badge.
+\newtcbox{\ptSevBox}[1]{on line, colback=sev#1, colframe=sev#1, coltext=white, boxrule=0pt, arc=2pt,
+  boxsep=0pt, left=4pt, right=4pt, top=2pt, bottom=2pt, fontupper=\scriptsize\bfseries}
+\newcommand{\ptSeverity}[2]{\ptSevBox{#1}{\MakeUppercase{#2}}}
+% Table column: a share of the line width, net of the column gaps (so tables never run into the margin).
+\newcolumntype{W}[1]{p{\dimexpr #1\linewidth-2\tabcolsep\relax}}
+% Retest result: a coloured dot and the result (fixed / partially fixed / not fixed / not tested / none).
+\colorlet{rtfixed}{sevlow}\colorlet{rtpartiallyfixed}{sevmedium}\colorlet{rtnotfixed}{sevcritical}
+\colorlet{rtnottested}{muted}\colorlet{rtnone}{muted}
+\newcommand{\ptRetest}[2]{{\color{rt#1}\raisebox{0.15ex}{\tikz\fill (0,0) circle (0.28em);}\,\bfseries\small #2}}
+% CVSS: the calculated score coloured by its own rating; outlined so it never reads as the severity badge.
+\newtcbox{\ptCvssBox}[1]{on line, colback=white, colframe=sev#1, coltext=sev#1, boxrule=0.8pt, arc=2pt,
+  boxsep=0pt, left=4pt, right=4pt, top=1.5pt, bottom=1.5pt, fontupper=\scriptsize\bfseries}
+\newcommand{\ptCvss}[3]{\ptCvssBox{#1}{\texttt{#2}\enspace #3}}
+% Risk band on top of each finding's facts: the severity in large type on its own colour.
+\newcommand{\ptRiskBand}[2]{{\Large\bfseries\MakeUppercase{#1}}\hfill{\normalsize\mdseries #2}}
+% One cell of the CVSS vector strip; tone 0-3 = how much the value raises the score.
+\newcommand{\ptCell}[3]{{\setlength{\fboxsep}{1.5pt}\colorbox{tone#1}{\textcolor{\ifnum#1>1 white\else ink\fi}{\scriptsize\texttt{#2:#3}}}}\hspace{1pt}}
+\newcommand{\ptUrl}[1]{\textcolor{brand}{#1}}
+% Raw text (HTTP messages, code) is read from files and never interpreted as LaTeX.
+\newtcolorbox{ptCodeBox}[1][]{enhanced, breakable, colback=soft, colframe=line, boxrule=0.5pt, arc=2pt,
+  left=6pt, right=6pt, top=5pt, bottom=5pt, before skip=4pt, after skip=8pt, #1}
+\newcommand{\ptVerbatim}[1]{\begin{ptCodeBox}\VerbatimInput[breaklines,breakanywhere,fontsize=\footnotesize,tabsize=4]{#1}\end{ptCodeBox}}
+\newcommand{\ptHttp}[2]{\begin{ptCodeBox}[title={#1}, attach boxed title to top left={xshift=6pt,yshift=-2.5mm},
+  boxed title style={colback=brand, colframe=brand, arc=1.5pt, boxrule=0pt, top=0.5pt, bottom=0.5pt},
+  fonttitle=\scriptsize\bfseries\color{white}, top=9pt]\VerbatimInput[breaklines,breakanywhere,fontsize=\footnotesize,tabsize=4]{#2}\end{ptCodeBox}}
+\newcommand{\ptImage}[1]{\fcolorbox{line}{white}{\includegraphics[width=\dimexpr\linewidth-2\fboxsep-2\fboxrule\relax,height=0.5\textheight,keepaspectratio]{#1}}}
+\newcommand{\ptMissingImage}{\fbox{\parbox{0.9\linewidth}{\centering\small\color{muted}(image format not supported in PDF)}}}
+\newcommand{\ptLabel}[1]{{\scriptsize\bfseries\color{muted}\MakeUppercase{#1}}}
+\newcommand{\ptHead}[1]{{\color{white}\scriptsize\bfseries\MakeUppercase{#1}}}
+% Tables written in report text (Markdown "| a | b |"): zebra rows, a brand-coloured header row.
+\newcommand{\ptTableBegin}{\par\rowcolors{2}{soft}{white}}
+\newcommand{\ptTableEnd}{\rowcolors{1}{}{}\par}
+\newcommand{\ptTableHead}[1]{\cellcolor{brand}{\color{white}\scriptsize\bfseries #1}}
+
+\hypersetup{pdftitle={\VAR{report.title}}, pdfauthor={\VAR{report.vendor_name or report.assessor}}}
+
+\begin{document}
+
+%# --------------------------------------------------------------------------------------------- cover
+\begin{titlepage}
+\thispagestyle{empty}
+\begin{tikzpicture}[remember picture, overlay]
+  \fill[brand] (current page.north west) rectangle ([yshift=-118mm]current page.north east);
+  \fill[brand!75!black] ([yshift=-118mm]current page.north west) rectangle ([yshift=-120.5mm]current page.north east);
+  \node[anchor=north west, inner sep=0pt] at ([xshift=20mm,yshift=-18mm]current page.north west)
+    {\ifx\ptLogoFile\empty{\color{white}\Large\bfseries \VAR{report.vendor_name}}\else{\setlength{\fboxsep}{3mm}\colorbox{white}{\includegraphics[height=12mm]{\ptLogoFile}}}\fi};
+  \node[anchor=south west, text width=170mm, align=left, inner sep=0pt] at ([xshift=20mm,yshift=-106mm]current page.north west)
+    {{\color{white!78!brand}\small\bfseries\MakeUppercase{\VAR{L.report}}}\\[5mm]
+     {\color{white}\fontsize{26}{31}\selectfont\bfseries\spaceskip=0.34em plus 0.12em minus 0.06em\relax\VAR{report.title}}\BLOCK{if report.client_name}\\[6mm]
+     {\color{white!85!brand}\large \VAR{report.client_name}}\BLOCK{endif}};
+\end{tikzpicture}
+\vspace*{110mm}
+
+\begin{tabularx}{\linewidth}{@{}>{\leavevmode\color{muted}\small\bfseries}p{40mm}L@{}}
+\BLOCK{if report.client_name}\VAR{L.client} & \VAR{report.client_name} \\ \BLOCK{endif}
+\BLOCK{if report.assessor}\VAR{L.assessor} & \VAR{report.assessor} \\ \BLOCK{endif}
+\BLOCK{if report.start_date or report.end_date}\VAR{L.period} & \VAR{report.start_date or ''}\BLOCK{if report.start_date and report.end_date} -- \BLOCK{endif}\VAR{report.end_date or ''} \\ \BLOCK{endif}
+\BLOCK{if report.vendor_name}\VAR{L.prepared_by} & \VAR{report.vendor_name} \\ \BLOCK{endif}
+\BLOCK{if report.vendor_contact}\VAR{L.contact} & \VAR{report.vendor_contact} \\ \BLOCK{endif}
+\BLOCK{if report.report_version}\VAR{L.version} & \VAR{report.report_version} \\ \BLOCK{endif}
+\BLOCK{if report.report_date}\VAR{L.report_date} & \VAR{report.report_date} \\ \BLOCK{endif}
+\end{tabularx}
+
+\vfill
+\ifx\ptClassification\empty\else
+\tcbox[on line, colback=white, colframe=brand, coltext=brand, boxrule=1pt, arc=2pt, left=8pt, right=8pt, top=4pt, bottom=4pt, fontupper=\bfseries]{\ptClassification}\par\vspace{4mm}
+\fi
+{\footnotesize\color{muted}\VAR{L.generated}: \VAR{generated_at}}
+\end{titlepage}
+
+%# ------------------------------------------------------------------------------- version history, toc
+\BLOCK{if versions}
+\section*{\VAR{L.version_history}}
+\rowcolors{2}{soft}{white}
+\begin{tabularx}{\linewidth}{@{}p{18mm}p{24mm}\BLOCK{if versions_have_author}p{40mm}\BLOCK{endif}L@{}}
+\rowcolor{white}\ptLabel{\VAR{L.version}} & \ptLabel{\VAR{L.date}} & \BLOCK{if versions_have_author}\ptLabel{\VAR{L.author}} & \BLOCK{endif}\ptLabel{\VAR{L.description}} \\
+\BLOCK{for v in versions}
+\texttt{\VAR{v.version}} & \texttt{\VAR{v.date or ''}} & \BLOCK{if versions_have_author}\VAR{v.author} & \BLOCK{endif}\VAR{v.description} \\
+\BLOCK{endfor}
+\end{tabularx}
+\rowcolors{1}{}{}
+\vspace{1.5em}
+\BLOCK{endif}
+
+\renewcommand{\contentsname}{\VAR{L.toc}}
+\tableofcontents
+\BLOCK{if fingerprint}
+\vspace{1.2em}
+{\scriptsize\color{muted}\VAR{L.fingerprint}: \texttt{\VAR{fingerprint}}\par}
+\BLOCK{endif}
+\newpage
+
+%# ================================================================================ building blocks ==
+%# Each block below is a Jinja macro; the report body at the end decides their order (report structure).
+
+\BLOCK{macro heading(sec)}
+\BLOCK{if sec.new_page}\clearpage\BLOCK{endif}
+\BLOCK{if sec.level == 1}
+\BLOCK{if sec.numbered}\section{\VAR{sec.title}}\BLOCK{else}\section*{\VAR{sec.title}}\addcontentsline{toc}{section}{\VAR{sec.title}}\BLOCK{endif}
+\BLOCK{else}
+\BLOCK{if sec.numbered}\subsection{\VAR{sec.title}}\BLOCK{else}\subsection*{\VAR{sec.title}}\addcontentsline{toc}{subsection}{\VAR{sec.title}}\BLOCK{endif}
+\BLOCK{endif}
+\BLOCK{endmacro}
+
+\BLOCK{macro targets_table()}
+\rowcolors{2}{soft}{white}
+\begin{tabularx}{\linewidth}{@{}p{45mm}p{32mm}L@{}}
+\rowcolor{white}\ptLabel{\VAR{L.target}} & \ptLabel{\VAR{L.type}} & \ptLabel{\VAR{L.address}} \\
+\BLOCK{for t in targets}
+\textbf{\VAR{t.name}} & \VAR{TARGET_KIND_LABELS[lang][t.kind]} & \texttt{\VAR{t.address}} \\
+\BLOCK{endfor}
+\end{tabularx}
+\rowcolors{1}{}{}
+\BLOCK{endmacro}
+
+\BLOCK{macro severity_bars()}
+\BLOCK{set maxcount = [counts.critical, counts.high, counts.medium, counts.low, counts.info, 1]|max}
+\begin{tcolorbox}[enhanced, colback=white, colframe=line, boxrule=0.5pt, arc=3pt, left=10pt, right=10pt, top=10pt, bottom=8pt]
+\centering
+\begin{tikzpicture}[x=1mm, y=1mm]
+\BLOCK{for s in severities}
+  \node[anchor=east, font=\small] at (28, \VAR{(-8 * loop.index0)|round(2)}) {\VAR{sev_labels[s]}};
+  \fill[soft, rounded corners=1pt] (31, \VAR{(-8 * loop.index0 - 2.2)|round(2)}) rectangle (131, \VAR{(-8 * loop.index0 + 2.2)|round(2)});
+\BLOCK{if counts[s]}
+  \fill[sev\VAR{s}, rounded corners=1pt] (31, \VAR{(-8 * loop.index0 - 2.2)|round(2)}) rectangle (\VAR{(31 + 100 * counts[s] / maxcount)|round(2)}, \VAR{(-8 * loop.index0 + 2.2)|round(2)});
+\BLOCK{endif}
+  \node[anchor=west, font=\small\bfseries] at (134, \VAR{(-8 * loop.index0)|round(2)}) {\VAR{counts[s]}};
+\BLOCK{endfor}
+  \draw[line] (0, -38) -- (145, -38);
+  \node[anchor=east, font=\small\bfseries] at (28, -43) {\VAR{L.total}};
+  \node[anchor=west, font=\small\bfseries] at (134, -43) {\VAR{findings|length}};
+\end{tikzpicture}
+\end{tcolorbox}
+\BLOCK{endmacro}
+
+\BLOCK{macro findings_table()}
+\BLOCK{if findings}
+\rowcolors{2}{soft}{white}
+\begin{longtable}{@{}W{.06}W{.13}W{.36}W{.14}W{.18}>{\raggedright\arraybackslash}W{.13}@{}}
+\rowcolor{brand}\ptHead{\VAR{L.no}} & \ptHead{\VAR{L.id}} & \ptHead{\VAR{L.title}} & \ptHead{\VAR{L.severity}} & \ptHead{\VAR{cvss_header}} & \ptHead{\VAR{L.status}} \\
+\endhead
+\BLOCK{for f in findings}
+\small\VAR{'%02d.'|format(loop.index)} & \hyperref[f:\VAR{f.id}]{\small\texttt{\VAR{f.display_id}}} & \raggedright\small \VAR{f.title} & \ptSeverity{\VAR{f.severity}}{\VAR{sev_labels[f.severity]}} & \BLOCK{if f.cvss_score is not none}\ptCvss{\VAR{f|cvss_rating_key}}{\VAR{f.cvss_score|score}}{\VAR{f|cvss_rating_label(lang)}}\BLOCK{else}{\color{muted}--}\BLOCK{endif} & \small\VAR{status_labels[f.status]} \\
+\BLOCK{endfor}
+\end{longtable}
+\rowcolors{1}{}{}
+\BLOCK{else}
+\VAR{L.no_findings}
+\BLOCK{endif}
+\BLOCK{endmacro}
+
+\BLOCK{macro retest_summary()}
+\BLOCK{if original_report}
+\VAR{L.original_report}: \textbf{\VAR{original_report.title}}\BLOCK{if original_report.report_date} (\VAR{L.original_date} \texttt{\VAR{original_report.report_date}})\BLOCK{endif}\par\medskip
+\BLOCK{endif}
+\BLOCK{if findings}
+\noindent\BLOCK{for key, label in retest_labels.items()}\BLOCK{if retest_counts[key]}\ptRetest{\VAR{(key or 'none')|replace('_', '')}}{\VAR{label}}: \textbf{\VAR{retest_counts[key]}}\qquad \BLOCK{endif}\BLOCK{endfor}\par\medskip
+\rowcolors{2}{soft}{white}
+\begin{longtable}{@{}W{.10}W{.33}W{.17}>{\raggedright\arraybackslash}W{.23}>{\raggedright\arraybackslash}W{.17}@{}}
+\rowcolor{brand}\ptHead{\VAR{L.id}} & \ptHead{\VAR{L.title}} & \ptHead{\VAR{L.severity}} & \ptHead{\VAR{L.retest_result}} & \ptHead{\VAR{L.retest_date}} \\
+\endhead
+\BLOCK{for f in findings}
+\hyperref[f:\VAR{f.id}]{\small\texttt{\VAR{f.display_id}}} & \raggedright\small \VAR{f.title} & \ptSeverity{\VAR{f.severity}}{\VAR{sev_labels[f.severity]}} & \ptRetest{\VAR{(f.retest_result or 'none')|replace('_', '')}}{\VAR{retest_labels[f.retest_result]}} & \small\texttt{\VAR{f.retest_date or ''}} \\
+\BLOCK{endfor}
+\end{longtable}
+\rowcolors{1}{}{}
+\BLOCK{else}
+\VAR{L.no_findings}
+\BLOCK{endif}
+\BLOCK{endmacro}
+
+\BLOCK{macro charts()}
+\BLOCK{set total = findings|length}
+%# --- findings by severity: donut + legend
+\begin{tcolorbox}[enhanced, colback=white, colframe=line, boxrule=0.5pt, arc=3pt, title={\VAR{L.chart_severity}},
+  coltitle=ink, colbacktitle=white, fonttitle=\small\bfseries, titlerule=0.5pt, titlerule style={line}]
+\centering
+\begin{tikzpicture}[x=1mm, y=1mm]
+\BLOCK{if total}
+\BLOCK{set ns = namespace(angle=90.0)}
+\BLOCK{for s in severities}\BLOCK{if counts[s]}
+\BLOCK{set sweep = 360.0 * counts[s] / total}
+  \fill[sev\VAR{s}] (0,0) -- (\VAR{ns.angle|round(3)}:22) arc[start angle=\VAR{ns.angle|round(3)}, delta angle=\VAR{(-sweep)|round(3)}, radius=22] -- cycle;
+\BLOCK{set ns.angle = ns.angle - sweep}
+\BLOCK{endif}\BLOCK{endfor}
+\BLOCK{else}
+  \fill[soft] (0,0) circle (22);
+\BLOCK{endif}
+  \fill[white] (0,0) circle (12);
+  \node[font=\Large\bfseries] at (0, 1.5) {\VAR{total}};
+  \node[font=\scriptsize, text=muted] at (0, -3.5) {\VAR{L.number_of_findings}};
+\BLOCK{for s in severities}
+  \fill[sev\VAR{s}, rounded corners=0.6pt] (40, \VAR{(15 - 7 * loop.index0 - 1.8)|round(2)}) rectangle (43.6, \VAR{(15 - 7 * loop.index0 + 1.8)|round(2)});
+  \node[anchor=west, font=\small] at (46, \VAR{(15 - 7 * loop.index0)|round(2)}) {\VAR{sev_labels[s]}};
+  \node[anchor=east, font=\small\bfseries] at (92, \VAR{(15 - 7 * loop.index0)|round(2)}) {\VAR{counts[s]}};
+\BLOCK{endfor}
+\end{tikzpicture}
+\end{tcolorbox}
+
+\BLOCK{if per_target}
+%# --- findings per target: stacked columns
+\BLOCK{set tmax = ([1] + per_target|map(attribute='total')|list)|max}
+\BLOCK{set colw = [10, (120 / per_target|length) * 0.55]|min}
+\BLOCK{set step = 120 / per_target|length}
+\begin{tcolorbox}[enhanced, colback=white, colframe=line, boxrule=0.5pt, arc=3pt, title={\VAR{L.chart_targets}},
+  coltitle=ink, colbacktitle=white, fonttitle=\small\bfseries, titlerule=0.5pt, titlerule style={line}]
+\centering
+\begin{tikzpicture}[x=1mm, y=1mm]
+\BLOCK{set kstep = 1 if tmax <= 10 else (tmax + 9) // 10}
+\BLOCK{for k in range(0, tmax + 1, kstep)}
+  \draw[line] (0, \VAR{(40 * k / tmax)|round(2)}) -- (122, \VAR{(40 * k / tmax)|round(2)});
+  \node[anchor=east, font=\scriptsize, text=muted] at (-1, \VAR{(40 * k / tmax)|round(2)}) {\VAR{k}};
+\BLOCK{endfor}
+\BLOCK{for t in per_target}
+\BLOCK{set x0 = step * loop.index0 + (step - colw) / 2 + 1}
+\BLOCK{set ns = namespace(y=0.0)}
+\BLOCK{for s in severities}\BLOCK{if t.counts[s]}
+\BLOCK{set h = 40 * t.counts[s] / tmax}
+  \fill[sev\VAR{s}] (\VAR{x0|round(2)}, \VAR{ns.y|round(2)}) rectangle (\VAR{(x0 + colw)|round(2)}, \VAR{(ns.y + h)|round(2)});
+\BLOCK{set ns.y = ns.y + h}
+\BLOCK{endif}\BLOCK{endfor}
+  \node[anchor=north, font=\scriptsize, text width=\VAR{(step - 2)|round(2)}mm, align=center] at (\VAR{(x0 + colw / 2)|round(2)}, -1.5) {\VAR{t.name}};
+\BLOCK{endfor}
+\end{tikzpicture}
+
+\smallskip
+{\footnotesize\BLOCK{for s in severities}\textcolor{sev\VAR{s}}{\rule{2.4mm}{2.4mm}}\,\VAR{sev_labels[s]}\quad\BLOCK{endfor}}
+\end{tcolorbox}
+\BLOCK{endif}
+
+%# --- CVSS rating versus severity: bubble matrix
+\begin{tcolorbox}[enhanced, colback=white, colframe=line, boxrule=0.5pt, arc=3pt, title={\VAR{L.chart_matrix}},
+  coltitle=ink, colbacktitle=white, fonttitle=\small\bfseries, titlerule=0.5pt, titlerule style={line}]
+\centering
+\begin{tikzpicture}[x=1mm, y=1mm]
+\BLOCK{set cols = ['none', 'low', 'medium', 'high', 'critical', '']}
+\BLOCK{for s in severities}
+  \node[anchor=east, font=\small] at (24, \VAR{(-9 * loop.index0)|round(2)}) {\VAR{sev_labels[s]}};
+\BLOCK{set row = loop.index0}
+\BLOCK{for r in cols}
+\BLOCK{set n = matrix[s][r]}
+\BLOCK{set cx = 33 + 19 * loop.index0}
+  \draw[line, fill=soft] (\VAR{(cx - 9)|round(2)}, \VAR{(-9 * row - 4.2)|round(2)}) rectangle (\VAR{(cx + 9)|round(2)}, \VAR{(-9 * row + 4.2)|round(2)});
+\BLOCK{if n}
+  \fill[sev\VAR{s}] (\VAR{cx}, \VAR{(-9 * row)|round(2)}) circle (\VAR{(1.6 + 2.2 * (n / [total, 1]|max) ** 0.5)|round(2)});
+  \node[font=\scriptsize\bfseries, text=white] at (\VAR{cx}, \VAR{(-9 * row)|round(2)}) {\VAR{n}};
+\BLOCK{endif}
+\BLOCK{endfor}
+\BLOCK{endfor}
+\BLOCK{for r in cols}
+  \node[font=\scriptsize, text=muted, align=center, text width=17mm] at (\VAR{33 + 19 * loop.index0}, -42) {\BLOCK{if r}\VAR{r|rating_label(lang)}\BLOCK{else}\VAR{L.no_cvss}\BLOCK{endif}};
+\BLOCK{endfor}
+  \node[font=\scriptsize\bfseries, text=muted] at (80.5, -47.5) {\VAR{L.cvss_score}};
+  \node[font=\scriptsize\bfseries, text=muted, rotate=90] at (-4, -18) {\VAR{L.severity}};
+\end{tikzpicture}
+\end{tcolorbox}
+\BLOCK{endmacro}
+
+\BLOCK{macro finding(f, grouped=False, first=False)}
+\BLOCK{if not first}\clearpage\BLOCK{endif}
+\phantomsection\label{f:\VAR{f.id}}
+\BLOCK{if grouped}
+\subsubsection{\texorpdfstring{\texttt{\VAR{f.display_id}} \VAR{f.title}\BLOCK{if f.status != 'open'}\enspace{\normalfont\small\color{muted}\MakeUppercase{\VAR{status_labels[f.status]}}}\BLOCK{endif}}{\VAR{f.display_id} \VAR{f.title}}}
+\BLOCK{else}
+\addcontentsline{toc}{subsection}{\VAR{f.display_id}\quad \VAR{f.title}}
+{\small\color{muted}\texttt{\bfseries{}\VAR{f.display_id}}}\par\vspace{2pt}
+{\Large\bfseries \VAR{f.title}\par}\vspace{8pt}
+\BLOCK{endif}
+
+%# Risk band: the severity in large type on its colour, the scores beside it.
+\begin{tcolorbox}[enhanced, colback=white, colframe=line, boxrule=0.5pt, arc=3pt, left=8pt, right=8pt, top=3pt, bottom=3pt,
+  title={\ptRiskBand{\VAR{sev_labels[f.severity]}}{\BLOCK{if f.cvss_score is not none}CVSS \VAR{f.cvss_version} \textbf{\VAR{f.cvss_score|score}}\BLOCK{endif}\BLOCK{if f.cwe}\quad \VAR{f.cwe}\BLOCK{endif}\quad \VAR{status_labels[f.status]}}},
+  colbacktitle=sev\VAR{f.severity}, coltitle=white, toptitle=6pt, bottomtitle=6pt, lefttitle=10pt, righttitle=10pt, titlerule=0pt]
+\begin{tabularx}{\linewidth}{@{}>{\leavevmode\color{muted}\small\bfseries}p{34mm}L@{}}
+\BLOCK{if f.targets}
+\VAR{L.affected} & \BLOCK{for t in f.targets}\VAR{t.name}\BLOCK{if t.address} {\small\color{muted}\texttt{\VAR{t.address}}}\BLOCK{endif}\BLOCK{if not loop.last}\newline \BLOCK{endif}\BLOCK{endfor} \\
+\BLOCK{endif}
+\BLOCK{if f.cvss_vector}
+CVSS \VAR{f.cvss_version} & \ptCvss{\VAR{f|cvss_rating_key}}{\VAR{f.cvss_score|score}}{\VAR{f|cvss_rating_label(lang)}}\quad{\footnotesize\texttt{\VAR{f.cvss_vector}}}\newline
+\BLOCK{for g in f.cvss_vector|vector_strip}\BLOCK{for c in g.cells}\ptCell{\VAR{c.tone}}{\VAR{c.key}}{\VAR{c.value}}\BLOCK{endfor}\hspace{4pt}\BLOCK{endfor} \\
+\BLOCK{endif}
+\BLOCK{if f.cwe and not grouped}
+\VAR{L.cwe} & \VAR{f.cwe|url_cwe}\BLOCK{if f.cwe|cwe_name}: \VAR{f.cwe|cwe_name}\BLOCK{endif} \\
+\BLOCK{endif}
+\VAR{L.status} & \VAR{status_labels[f.status]}\BLOCK{if f.confidence}\qquad{\color{muted}\small\bfseries \VAR{L.confidence}:} \VAR{conf_labels[f.confidence]}\BLOCK{endif} \\
+\BLOCK{if f.retest_result}
+\VAR{L.retest} & \ptRetest{\VAR{f.retest_result|replace('_', '')}}{\VAR{retest_labels[f.retest_result]}}\BLOCK{if f.retest_date}\quad{\small\texttt{\VAR{f.retest_date}}}\BLOCK{endif} \\
+\BLOCK{endif}
+\end{tabularx}
+\end{tcolorbox}
+
+\BLOCK{if f.retest_notes}
+\ptBlockTitle{\VAR{L.retest_notes}}
+\VAR{f.retest_notes|richtext}
+\BLOCK{endif}
+
+\BLOCK{for key in ['description', 'impact', 'technical_details', 'poc']}
+\BLOCK{if f[key]}
+\ptBlockTitle{\VAR{L[key]}}
+\VAR{f[key]|richtext}
+\BLOCK{endif}
+\BLOCK{endfor}
+
+\BLOCK{for a in f.attachments}
+\begin{center}
+\VAR{a|image}
+\captionof{figure}{\VAR{a.caption}}
+\end{center}
+\BLOCK{endfor}
+
+\BLOCK{if f.evidence}
+\ptBlockTitle{\VAR{L.evidence}}
+\BLOCK{for e in f.evidence}
+\needspace{6\baselineskip}
+\BLOCK{if e.title}{\small\bfseries \VAR{e.title}}\par\vspace{3pt}\BLOCK{endif}
+\ptHttp{\VAR{L.request}}{\VAR{e.request|verbatim_file('request')}}
+\BLOCK{if e.response}
+\ptHttp{\VAR{L.response}}{\VAR{e.response|verbatim_file('response')}}
+\BLOCK{endif}
+\BLOCK{endfor}
+\BLOCK{endif}
+
+\BLOCK{if f.remediation}
+\ptBlockTitle{\VAR{L.remediation}}
+\VAR{f.remediation|richtext}
+\BLOCK{endif}
+
+\BLOCK{if f.refs}
+\ptBlockTitle{\VAR{L.references}}
+\VAR{f.refs|reference_list}
+\BLOCK{endif}
+
+\BLOCK{if show_finding_history and f.history}
+\ptBlockTitle{\VAR{L.finding_history}}
+\rowcolors{1}{soft}{white}
+\begin{tabularx}{\linewidth}{@{}p{24mm}\BLOCK{if f.history_has_author}p{38mm}\BLOCK{endif}L@{}}
+\BLOCK{for h in f.history}
+\texttt{\small\VAR{h.date or ''}} & \BLOCK{if f.history_has_author}\small\VAR{h.author} & \BLOCK{endif}\small\VAR{h.text} \\
+\BLOCK{endfor}
+\end{tabularx}
+\rowcolors{1}{}{}
+\BLOCK{endif}
+\BLOCK{endmacro}
+
+\BLOCK{macro findings_body()}
+\BLOCK{if not findings}
+\VAR{L.no_findings}
+\BLOCK{elif groups}
+\BLOCK{for g in groups}
+\BLOCK{if not loop.first}\clearpage\BLOCK{endif}
+\subsection{\VAR{g.title}}
+\VAR{g.description|richtext}
+\BLOCK{for f in g.findings}
+\VAR{finding(f, grouped=True, first=loop.first)}
+\BLOCK{endfor}
+\BLOCK{if g.mitigation}
+\subsubsection{\VAR{L.mitigation}}
+\VAR{g.mitigation|richtext}
+\BLOCK{endif}
+\BLOCK{endfor}
+\BLOCK{else}
+\BLOCK{for f in findings}
+\VAR{finding(f, first=loop.first)}
+\BLOCK{endfor}
+\BLOCK{endif}
+\BLOCK{endmacro}
+
+%# ========================================================================================== body ==
+%# The order and titles come from the report structure (Report -> Structure in the app).
+\BLOCK{for sec in sections}
+\VAR{heading(sec)}
+\BLOCK{if sec.kind == 'executive_summary'}
+\VAR{report.executive_summary|richtext(sec.numbered)}
+\BLOCK{elif sec.kind == 'scope'}
+\VAR{report.scope|richtext(sec.numbered)}
+\BLOCK{if targets}
+\subsection*{\VAR{L.targets}}
+\VAR{targets_table()}
+\BLOCK{endif}
+\BLOCK{elif sec.kind == 'methodology'}
+\VAR{report.methodology|richtext(sec.numbered)}
+\BLOCK{elif sec.kind == 'summary'}
+\VAR{severity_bars()}
+\vspace{0.6em}
+\VAR{findings_table()}
+\BLOCK{elif sec.kind == 'findings_table'}
+\VAR{findings_table()}
+\BLOCK{elif sec.kind == 'charts'}
+\VAR{charts()}
+\BLOCK{elif sec.kind == 'retest_summary'}
+\VAR{retest_summary()}
+\BLOCK{elif sec.kind == 'findings'}
+\VAR{findings_body()}
+\BLOCK{endif}
+\VAR{sec.body|richtext(sec.numbered)}
+\BLOCK{endfor}
+
+\end{document}

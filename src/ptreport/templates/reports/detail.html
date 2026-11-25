@@ -1,0 +1,291 @@
+{% extends "base.html" %}
+{% from "_macros.html" import cvss_chip, input, select, textarea, post_button, severity_badge, status_label, severity_bar, icon, crumbs %}
+{% block title %}{{ report.title }}{% endblock %}
+{% block dialogs %}
+  <dialog class="modal modal-pdf" id="pdf-dialog" aria-labelledby="pdf-dialog-title">
+    <div class="modal-pdf-head">
+      <h2 id="pdf-dialog-title">{{ report.title }}</h2>
+      <div class="cluster">
+        <a class="btn btn-sm" data-pdf-download hidden download>{{ icon('download') }}Download</a>
+        <a class="btn btn-sm" data-pdf-open hidden target="_blank" rel="noopener">{{ icon('external') }}Open in a new tab</a>
+        <button class="btn btn-icon btn-sm" type="button" data-pdf-close aria-label="Close preview">{{ icon('x') }}</button>
+      </div>
+    </div>
+    <div class="modal-pdf-body">
+      <div class="pdf-status" data-pdf-status role="status" aria-live="polite">
+        {{ icon('spinner') }}<span data-pdf-message>Generating the PDF from the LaTeX template…</span>
+      </div>
+      <iframe class="pdf-frame" data-pdf-frame title="PDF preview of {{ report.title }}" hidden></iframe>
+    </div>
+  </dialog>
+{% endblock %}
+{% block content %}
+<div class="stack-lg">
+  {{ crumbs([('Reports', url_for('web.index'), False), (report.title, None, False)]) }}
+  <div class="page-head">
+    <div class="stack">
+      <h1>{{ report.title }}</h1>
+      <p class="muted">
+        {% if report.client_name %}{{ report.client_name }} · {% endif %}
+        {% if report.start_date %}<span class="mono">{{ report.start_date }}{% if report.end_date %} – {{ report.end_date }}{% endif %}</span> · {% endif %}
+        {{ 'Polski' if report.language == 'pl' else 'English' }}
+      </p>
+    </div>
+    <div class="cluster">
+      <a class="btn" href="{{ url_for('web.report_edit', report_id=report.id) }}">{{ icon('edit') }}Edit details</a>
+      <a class="btn" href="{{ url_for('web.report_preview', report_id=report.id) }}" target="_blank" rel="noopener" data-pdf-preview>{{ icon('external') }}Preview PDF<span class="visually-hidden"> (opens a new tab)</span></a>
+      <details class="dropdown">
+        <summary class="btn btn-primary">Export {{ icon('chevron-down') }}</summary>
+        <div class="dropdown-menu" role="group" aria-label="Export formats">
+          <a class="menu-item" href="{{ url_for('web.report_export', report_id=report.id, fmt='pdf') }}">{{ icon('file') }}PDF (LaTeX)</a>
+          <a class="menu-item" href="{{ url_for('web.report_export', report_id=report.id, fmt='tex') }}">{{ icon('download') }}LaTeX sources (.zip)</a>
+          <div class="menu-sep"></div>
+          <a class="menu-item" href="{{ url_for('web.report_export', report_id=report.id, fmt='html') }}">{{ icon('file') }}HTML (standalone)</a>
+          <a class="menu-item" href="{{ url_for('web.report_export', report_id=report.id, fmt='md') }}">{{ icon('file') }}Markdown</a>
+          <a class="menu-item" href="{{ url_for('web.report_export', report_id=report.id, fmt='json') }}">{{ icon('download') }}JSON (backup / share)</a>
+        </div>
+      </details>
+    </div>
+  </div>
+
+  {% set total = findings|length %}
+  <div class="sev-bar">
+    {{ severity_bar(counts, severities, total) }}
+    <ul class="sev-legend">
+      {% for s in severities %}
+        <li{% if not counts[s] %} class="is-zero"{% endif %}>{{ severity_badge(s) }}<span class="count">{{ counts[s] }}</span></li>
+      {% endfor %}
+    </ul>
+  </div>
+
+  <section class="stack" id="findings" aria-labelledby="findings-h">
+    <div class="section-head">
+      <h2 id="findings-h">Findings <span class="muted">({{ total }})</span></h2>
+      <div class="cluster">
+        {% if total > 1 %}
+          {{ post_button(url_for('web.findings_renumber', report_id=report.id), 'Renumber by severity', 'btn btn-sm', 'Reorder and renumber all findings by severity (Critical first)?') }}
+        {% endif %}
+        <a class="btn btn-sm" href="{{ url_for('web.scan_import', report_id=report.id) }}">{{ icon('upload') }}Import scan</a>
+        <a class="btn btn-sm" href="{{ url_for('web.finding_new', report_id=report.id) }}#from-template">{{ icon('list') }}From template</a>
+        <a class="btn btn-primary btn-sm" href="{{ url_for('web.finding_new', report_id=report.id) }}">{{ icon('plus') }}Add finding</a>
+      </div>
+    </div>
+    {% if findings %}
+      <div class="table-wrap" tabindex="0" role="region" aria-label="Findings table, scrolls sideways">
+        <table class="table" aria-label="Findings of {{ report.title }}">
+          <thead><tr><th scope="col"><span class="visually-hidden">Order</span></th><th scope="col">ID</th><th scope="col">Title</th><th scope="col">Severity</th><th scope="col" class="col-cvss">{{ cvss_header }}</th><th scope="col">CWE</th><th scope="col">Targets</th><th scope="col">Status</th>{% if retest_mode %}<th scope="col">Retest</th>{% endif %}</tr></thead>
+          <tbody>
+            {% for f in findings %}
+              <tr>
+                <td class="col-order"><span class="order-ctrl">
+                  {% if loop.first %}<button class="btn btn-icon btn-sm btn-ghost" type="button" aria-label="Move {{ f.display_id }} up" disabled>{{ icon('arrow-up') }}</button>
+                  {% else %}{{ post_button(url_for('web.finding_move', finding_id=f.id), '', 'btn btn-icon btn-sm btn-ghost', fields={'direction': 'up'}, icon_name='arrow-up', aria_label='Move ' ~ f.display_id ~ ' up') }}{% endif %}
+                  {% if loop.last %}<button class="btn btn-icon btn-sm btn-ghost" type="button" aria-label="Move {{ f.display_id }} down" disabled>{{ icon('arrow-down') }}</button>
+                  {% else %}{{ post_button(url_for('web.finding_move', finding_id=f.id), '', 'btn btn-icon btn-sm btn-ghost', fields={'direction': 'down'}, icon_name='arrow-down', aria_label='Move ' ~ f.display_id ~ ' down') }}{% endif %}
+                </span></td>
+                <td class="col-id">{{ f.display_id }}</td>
+                <td class="col-title"><a href="{{ url_for('web.finding_edit', finding_id=f.id) }}">{{ f.title }}</a>
+                  {% if f.evidence %}<span class="chip pill-src" title="HTTP evidence items">{{ f.evidence|length }} req</span>{% endif %}</td>
+                <td>{{ severity_badge(f.severity) }}</td>
+                <td class="col-cvss">{% if f.cvss_score is not none %}{{ cvss_chip(f) }}{% else %}<span class="cvss-none">—</span>{% endif %}</td>
+                <td class="col-cwe">{% if f.cwe %}<span title="{{ f.cwe|cwe_name }}">{{ f.cwe }}</span>{% endif %}</td>
+                <td>{% if f.targets %}<div class="chips">{% for t in f.targets %}<span class="chip">{{ t.name }}</span>{% endfor %}</div>{% endif %}</td>
+                <td>{{ status_label(f.status) }}</td>
+                {% if retest_mode %}<td>{% if f.retest_result %}<span class="retest retest-{{ f.retest_result }}">{{ RETEST_LABELS['en'][f.retest_result] }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>{% endif %}
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="empty">
+        {{ icon('list') }}
+        <h3>No findings yet</h3>
+        <p>{% if not targets %}Add targets first so you can link findings to them, then{% else %}Add the first finding to start the severity summary:{% endif %} document each vulnerability with CVSS, CWE and PoC.</p>
+        <a class="btn btn-primary" href="{{ url_for('web.finding_new', report_id=report.id) }}">{{ icon('plus') }}Add finding</a>
+      </div>
+    {% endif %}
+  </section>
+
+  <section class="stack" id="targets" aria-labelledby="targets-h">
+    <div class="section-head">
+      <h2 id="targets-h">Targets <span class="muted">({{ targets|length }})</span></h2>
+      <a class="btn btn-primary btn-sm" href="{{ url_for('web.target_new', report_id=report.id) }}">{{ icon('plus') }}Add target</a>
+    </div>
+    {% if targets %}
+      <div class="table-wrap" tabindex="0" role="region" aria-label="Targets table, scrolls sideways">
+        <table class="table" aria-label="Targets of {{ report.title }}">
+          <thead><tr><th scope="col">Name</th><th scope="col">Type</th><th scope="col">Address</th><th scope="col">Description</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
+          <tbody>
+            {% for t in targets %}
+              <tr>
+                <td class="col-title">{{ t.name }}</td>
+                <td>{{ TARGET_KIND_LABELS['en'][t.kind] }}</td>
+                <td class="mono small break">{{ t.address }}</td>
+                <td class="small">{{ t.description|truncate(120) }}</td>
+                <td class="col-actions"><div class="cluster">
+                  <a class="btn btn-sm" href="{{ url_for('web.target_edit', target_id=t.id) }}">{{ icon('edit') }}Edit<span class="visually-hidden"> {{ t.name }}</span></a>
+                  {{ post_button(url_for('web.target_delete', target_id=t.id), 'Delete', 'btn btn-sm btn-danger', 'Delete target "' ~ t.name ~ '"? It will be unlinked from findings.', icon_name='trash') }}
+                </div></td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="empty">
+        {{ icon('folder') }}
+        <h3>No targets yet</h3>
+        <p>Add the applications, hosts and ranges that were in scope.</p>
+        <a class="btn btn-primary" href="{{ url_for('web.target_new', report_id=report.id) }}">{{ icon('plus') }}Add target</a>
+      </div>
+    {% endif %}
+  </section>
+
+  {% set version_values = version_values|default({}) %}{% set version_errors = version_errors|default({}) %}
+  <section class="panel stack" id="structure" aria-labelledby="structure-h">
+    <div class="section-head">
+      <h2 id="structure-h">Report structure</h2>
+      <a class="btn btn-sm" href="{{ url_for('web.report_preview', report_id=report.id) }}" target="_blank" rel="noopener" data-pdf-preview>{{ icon('external') }}Preview PDF</a>
+    </div>
+    <p class="hint">Order, titles and numbering of the sections in the PDF. Text supports <code>## Heading</code>, <code>### Subheading</code>, <code>- list items</code>, <code>**bold**</code>, <code>`code`</code> and links.</p>
+    <ol class="history-list structure-list">
+      {% for sec in all_sections %}
+        <li class="history-row{% if not sec.enabled %} is-off{% endif %}{% if sec.level == 2 %} is-sub{% endif %}">
+          <div class="history-main">
+            <span class="cluster">
+              {{ post_button(url_for('web.section_move', section_id=sec.id), '', 'btn btn-icon btn-sm', fields={'direction': 'up'}, icon_name='arrow-up', aria_label='Move up', disabled=loop.first) }}
+              {{ post_button(url_for('web.section_move', section_id=sec.id), '', 'btn btn-icon btn-sm', fields={'direction': 'down'}, icon_name='arrow-down', aria_label='Move down', disabled=loop.last) }}
+            </span>
+            <strong>{{ sec.title or section_kinds[sec.kind].split(' (')[0] }}</strong>
+            <span class="muted small">{{ section_kinds[sec.kind] }}</span>
+            {% if not sec.enabled %}<span class="chip">off</span>{% endif %}{% if not sec.numbered %}<span class="chip">no number</span>{% endif %}{% if sec.new_page %}<span class="chip">new page</span>{% endif %}
+          </div>
+          <details class="history-edit">
+            <summary class="btn btn-sm">{{ icon('edit') }}Edit<span class="visually-hidden"> section</span></summary>
+            <form method="post" action="{{ url_for('web.section_edit', section_id=sec.id) }}" class="stack" novalidate data-validate>
+              <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+              <div class="grid-2">
+                {{ input('title', 'Title' ~ ('' if sec.kind == 'text' else ' (empty = default)'), sec, {}, required=sec.kind == 'text', maxlength=300, prefix='s' ~ sec.id ~ '-') }}
+                {{ select('level', 'Level', {'level': sec.level|string}, {}, ['1', '2'], {'1': 'Section', '2': 'Subsection'}, prefix='s' ~ sec.id ~ '-') }}
+              </div>
+              <div class="cluster">
+                {% for name, label in [('enabled', 'Shown'), ('numbered', 'Numbered'), ('new_page', 'Starts a new page')] %}
+                  <input type="hidden" name="{{ name }}" value="0">
+                  <label class="check check-inline"><input type="checkbox" name="{{ name }}" value="1"{% if sec[name] %} checked{% endif %}><span class="check-text">{{ label }}</span></label>
+                {% endfor %}
+              </div>
+              {{ textarea('body', 'Text' if sec.kind == 'text' else 'Text after the built-in content (optional)', sec, {}, rows=8 if sec.kind == 'text' else 3, prefix='s' ~ sec.id ~ '-') }}
+              <div class="cluster"><button class="btn btn-primary btn-sm" type="submit">Save section</button></div>
+            </form>
+          </details>
+          {% if sec.kind in addable_kinds %}{{ post_button(url_for('web.section_delete', section_id=sec.id), 'Delete', 'btn btn-sm btn-danger', 'Delete this section?', icon_name='trash') }}{% else %}<span></span>{% endif %}
+        </li>
+      {% endfor %}
+    </ol>
+    <form method="post" action="{{ url_for('web.section_new', report_id=report.id) }}" class="stack" novalidate data-validate>
+      <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+      <div class="grid-3">
+        {{ select('kind', 'Add', {'kind': 'text'}, {}, addable_kinds, section_kinds, prefix='sn-') }}
+        {{ input('title', 'Title', {}, {}, maxlength=300, placeholder='Future directions', prefix='sn-') }}
+        {{ select('level', 'Level', {'level': '1'}, {}, ['1', '2'], {'1': 'Section', '2': 'Subsection'}, prefix='sn-') }}
+      </div>
+      <div class="cluster"><button class="btn" type="submit">{{ icon('plus') }}Add section</button></div>
+    </form>
+  </section>
+
+  {% if report.group_by_cwe %}
+  <section class="panel stack" id="cwe-groups" aria-labelledby="cwe-h">
+    <h2 id="cwe-h">CWE groups</h2>
+    <p class="hint">Findings are grouped by CWE in the PDF: the group's description first, then its findings, then the mitigation. Findings without a CWE form the last group. Empty fields use the text from the <a href="{{ url_for('web.cwe_library') }}">CWE library</a> (your own entries, else MITRE).</p>
+    <ol class="history-list">
+      {% for g in groups %}
+        <li class="history-row">
+          <div class="history-main">
+            <span class="cluster">
+              {{ post_button(url_for('web.cwe_group_move', report_id=report.id), '', 'btn btn-icon btn-sm', fields={'direction': 'up', 'cwe': g.cwe}, icon_name='arrow-up', aria_label='Move up', disabled=loop.first) }}
+              {{ post_button(url_for('web.cwe_group_move', report_id=report.id), '', 'btn btn-icon btn-sm', fields={'direction': 'down', 'cwe': g.cwe}, icon_name='arrow-down', aria_label='Move down', disabled=loop.last) }}
+            </span>
+            <strong>{{ g.title }}</strong>
+            <span class="muted small">{{ g.findings|map(attribute='display_id')|join(', ') }}</span>
+            {% if g.own_description or g.own_mitigation %}<span class="chip">own text</span>{% elif g.description or g.mitigation %}<span class="chip">library text</span>{% else %}<span class="chip">no text</span>{% endif %}
+          </div>
+          <details class="history-edit">
+            <summary class="btn btn-sm">{{ icon('edit') }}Edit<span class="visually-hidden"> group {{ g.title }}</span></summary>
+            <form method="post" action="{{ url_for('web.cwe_group_save', report_id=report.id) }}" class="stack" novalidate data-validate>
+              <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+              <input type="hidden" name="cwe" value="{{ g.cwe }}">
+              {% set note = {'title': g.title if g.title_custom else '', 'description': g.own_description, 'mitigation': g.own_mitigation} %}
+              {{ input('title', 'Group title (empty = default)', note, {}, maxlength=300, prefix='g' ~ loop.index ~ '-') }}
+              {{ textarea('description', 'Description (shown before the findings)', note, {}, rows=5, prefix='g' ~ loop.index ~ '-') }}
+              {{ textarea('mitigation', 'Mitigation (shown after the findings)', note, {}, rows=6, prefix='g' ~ loop.index ~ '-') }}
+              <div class="cluster"><button class="btn btn-primary btn-sm" type="submit">Save group</button></div>
+            </form>
+          </details>
+          <span></span>
+        </li>
+      {% endfor %}
+    </ol>
+  </section>
+  {% endif %}
+
+  <section class="panel stack" id="versions" aria-labelledby="versions-h">
+    <h2 id="versions-h">Report version history <span class="muted">({{ versions|length }})</span></h2>
+    {% if not report.show_version_history %}<p class="hint">Hidden in exports (Edit details → Exports).</p>{% endif %}
+    {% if all_versions %}
+      <ul class="history-list">
+        {% for v in all_versions %}
+          <li class="history-row">
+            <div class="history-main"><span class="mono">{{ v.version }}</span><span class="mono muted">{{ v.date or '' }}</span>{% if v.author %}<span class="muted">{{ v.author }}</span>{% endif %}<span>{{ v.description }}</span></div>
+            <details class="history-edit">
+              <summary class="btn btn-sm">{{ icon('edit') }}Edit<span class="visually-hidden"> version {{ v.version }}</span></summary>
+              <form method="post" action="{{ url_for('web.report_version_edit', version_id=v.id) }}" class="stack" novalidate data-validate>
+                <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+                <div class="grid-version-4">
+                  {{ input('version', 'Version', v, {}, required=True, maxlength=20, mono=True, prefix='ver' ~ v.id ~ '-') }}
+                  {{ input('date', 'Date', v, {}, type='date', prefix='ver' ~ v.id ~ '-') }}
+                  {{ input('author', 'Author', v, {}, maxlength=200, prefix='ver' ~ v.id ~ '-') }}
+                  {{ input('description', 'Description', v, {}, maxlength=300, prefix='ver' ~ v.id ~ '-') }}
+                </div>
+                <div class="cluster"><button class="btn btn-primary btn-sm" type="submit">Save</button></div>
+              </form>
+            </details>
+            {{ post_button(url_for('web.report_version_delete', version_id=v.id), 'Delete', 'btn btn-sm btn-danger', 'Remove version ' ~ v.version ~ ' from the history?', icon_name='trash') }}
+          </li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+    <form method="post" action="{{ url_for('web.report_version_new', report_id=report.id) }}" class="stack" novalidate data-validate>
+      <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+      <div class="grid-version-4">
+        {{ input('version', 'Version', version_values, version_errors, required=True, maxlength=20, mono=True, placeholder='1.0', prefix='ver-') }}
+        {{ input('date', 'Date', version_values, version_errors, type='date', prefix='ver-') }}
+        {{ input('author', 'Author', version_values, version_errors, maxlength=200, placeholder='Jan Kowalski', prefix='ver-') }}
+        {{ input('description', 'Description', version_values, version_errors, maxlength=300, placeholder='Final version after the retest', prefix='ver-') }}
+      </div>
+      <div class="cluster"><button class="btn" type="submit">{{ icon('plus') }}Add version</button></div>
+    </form>
+  </section>
+
+  <section class="panel stack" id="retest" aria-labelledby="retest-h">
+    <h2 id="retest-h">Retest and copies</h2>
+    {% if original_report %}
+      <p class="prose">This is a retest of <a href="{{ url_for('web.report_detail', report_id=original_report.id) }}">{{ original_report.title }}</a>. Set the retest result, date and notes on each finding; the "Retest summary" section lists them in the report.</p>
+    {% else %}
+      <p class="prose">A retest creates a new report with the same targets, findings, evidence and structure, linked to this one, with a "Retest summary" section at the start. This report stays unchanged.</p>
+    {% endif %}
+    <div class="cluster">
+      {{ post_button(url_for('web.report_retest', report_id=report.id), 'Create retest report', 'btn btn-primary', 'Create a retest report from "' ~ report.title ~ '"?', icon_name='check-circle') }}
+      {{ post_button(url_for('web.report_duplicate', report_id=report.id), 'Duplicate report', 'btn', 'Create an independent copy of "' ~ report.title ~ '"?', icon_name='file') }}
+    </div>
+  </section>
+
+  <section class="panel stack" aria-labelledby="danger-h">
+    <h2 id="danger-h">Danger zone</h2>
+    <p class="muted">Deleting the report removes its targets, findings and evidence.</p>
+    <div>{{ post_button(url_for('web.report_delete', report_id=report.id), 'Delete report', 'btn btn-danger', 'Delete "' ~ report.title ~ '" with all targets, findings and evidence? This cannot be undone.', icon_name='trash') }}</div>
+  </section>
+</div>
+{% endblock %}
+
+{% block scripts %}<script src="{{ url_for('static', filename='preview.js') }}"></script>{% endblock %}

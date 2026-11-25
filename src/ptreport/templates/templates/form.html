@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% from "_macros.html" import input, textarea, select, field_error, icon, flash, crumbs, post_button %}
+{% block title %}{{ template.title if template else 'New template' }}{% endblock %}
+{% block content %}
+<div class="stack-lg">
+  {{ crumbs([('Templates', url_for('web.templates_list'), False), (template.title if template else 'New template', None, True)]) }}
+  <div class="page-head"><h1>{{ template.title if template else 'New template' }}</h1></div>
+  {% if errors %}{{ flash('error', 'Please fix the highlighted fields.') }}{% endif %}
+  <form method="post" class="stack-lg" novalidate data-validate
+        action="{{ url_for('web.template_edit', template_id=template.id) if template else url_for('web.template_new') }}">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <section class="panel stack-lg" aria-labelledby="tpl-h">
+      <h2 id="tpl-h">Template</h2>
+      {{ input('title', 'Vulnerability title', values, errors, required=True, maxlength=300, placeholder='Stored Cross-Site Scripting') }}
+      <div class="grid-3">
+        {{ select('language', 'Language', values, errors, languages, {'en': 'English', 'pl': 'Polski'}) }}
+        {{ select('severity', 'Severity', values, errors, severities, SEVERITY_LABELS['en'], required=True, blank='— select —') }}
+        {{ input('cwe', 'CWE', values, errors, maxlength=12, mono=True, pattern="(?:[Cc][Ww][Ee]-)?[0-9]{1,5}", title="e.g. CWE-79", placeholder='CWE-79', list='cwe-list', hint=(values.get('cwe')|cwe_name) or 'Number or pick from the list') }}
+      </div>
+      {{ input('tags', 'Tags', values, errors, maxlength=300, placeholder='web, xss, injection', hint='Comma separated. Used by the search.') }}
+      <datalist id="cwe-list">
+        {% for id, name in cwe_choices %}<option value="{{ id }}" label="{{ id }} — {{ name }}">{{ id }} — {{ name }}</option>{% endfor %}
+      </datalist>
+    </section>
+    {% include "findings/_cvss.html" %}
+    <section class="panel stack-lg" aria-labelledby="writeup-h">
+      <h2 id="writeup-h">Write-up</h2>
+      <p class="hint">Use placeholders such as <code>&lt;ENDPOINT&gt;</code> for the parts that change per test.</p>
+      {{ textarea('description', 'Description', values, errors, rows=6) }}
+      {{ textarea('impact', 'Impact', values, errors, rows=4) }}
+      {{ textarea('technical_details', 'Technical details', values, errors, rows=6, mono=True) }}
+      {{ textarea('poc', 'Proof of Concept', values, errors, rows=6, mono=True) }}
+      {{ textarea('remediation', 'Remediation', values, errors, rows=5) }}
+      {{ textarea('refs', 'References', values, errors, rows=3, mono=True, hint='One per line.') }}
+    </section>
+    <div class="save-bar">
+      <div class="cluster">
+        <button class="btn btn-primary" type="submit">{{ 'Save template' if template else 'Create template' }}</button>
+        <a class="btn btn-ghost" href="{{ url_for('web.templates_list') }}">Cancel</a>
+      </div>
+    </div>
+  </form>
+</div>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='cvss.js') }}"></script>{% endblock %}

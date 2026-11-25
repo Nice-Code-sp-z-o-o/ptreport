@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% from "_macros.html" import textarea, crumbs %}
+{% set section = 'settings' %}
+{% block title %}{{ cwe }}{% endblock %}
+{% block content %}
+<div class="stack-lg">
+  {{ crumbs([('Settings', url_for('web.settings'), False), ('CWE library', url_for('web.cwe_library'), False), (cwe, None, True)]) }}
+  <h1><span class="mono muted">{{ cwe }}</span> {{ reference.name or 'Not in the MITRE catalogue' }}</h1>
+  <form method="post" class="panel stack-lg" novalidate>
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <p class="hint">Your text is used in reports grouped by CWE. Leave a field empty to fall back to MITRE's text (if enabled). Supports ## headings, - lists and **bold**.</p>
+    {{ textarea('description', 'Your description', own, {}, rows=8) }}
+    {{ textarea('mitigation', 'Your mitigation', own, {}, rows=10) }}
+    <div class="cluster"><button class="btn btn-primary" type="submit">Save</button><a class="btn btn-ghost" href="{{ url_for('web.cwe_library') }}">Back</a></div>
+  </form>
+  {% if reference.description or reference.mitigation %}
+  <section class="panel stack" aria-labelledby="mitre-h">
+    <h2 id="mitre-h">MITRE text</h2>
+    <details><summary class="btn btn-sm">Description</summary><div class="prose rt-block">{{ reference.description|richtext }}</div></details>
+    <details><summary class="btn btn-sm">Potential mitigations</summary><div class="prose rt-block">{{ reference.mitigation|richtext }}</div></details>
+    <p class="hint"><a href="https://cwe.mitre.org/data/definitions/{{ number }}.html" rel="noopener noreferrer">{{ cwe }} on cwe.mitre.org</a></p>
+  </section>
+  {% endif %}
+</div>
+{% endblock %}

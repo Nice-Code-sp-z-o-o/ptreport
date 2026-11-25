@@ -1,0 +1,390 @@
+[
+ {
+  "report": {
+   "id": 1,
+   "title": "ACME Customer Portal – Web Application Penetration Test",
+   "client_name": "ACME Corp",
+   "assessor": "Jan Kowalski, Anna Nowak",
+   "start_date": "2026-11-03",
+   "end_date": "2026-11-14",
+   "language": "pl",
+   "finding_prefix": "ACME",
+   "executive_summary": "Testy wykazały 5 podatności, w tym jedną krytyczną umożliwiającą odczyt całej bazy danych klientów.\n\nZalecamy priorytetowe usunięcie podatności ACME-001.",
+   "scope": "Testy w modelu grey-box z kontem zwykłego użytkownika.",
+   "methodology": "OWASP WSTG v4.2, OWASP ASVS 4.0.3 (poziom 2).",
+   "created_at": "2026-11-25 18:08:30",
+   "updated_at": "2026-11-25 18:08:30"
+  },
+  "targets": [
+   {
+    "id": 3,
+    "report_id": 1,
+    "name": "Admin panel",
+    "kind": "web",
+    "address": "https://admin.acme.example",
+    "description": "",
+    "created_at": "2026-11-25 18:08:30"
+   },
+   {
+    "id": 1,
+    "report_id": 1,
+    "name": "Customer portal",
+    "kind": "web",
+    "address": "https://portal.acme.example",
+    "description": "",
+    "created_at": "2026-11-25 18:08:30"
+   },
+   {
+    "id": 2,
+    "report_id": 1,
+    "name": "Public API",
+    "kind": "api",
+    "address": "https://api.acme.example/v2",
+    "description": "",
+    "created_at": "2026-11-25 18:08:30"
+   }
+  ],
+  "findings": [
+   {
+    "id": 1,
+    "report_id": 1,
+    "position": 1,
+    "title": "SQL Injection w parametrze id (/api/v2/orders)",
+    "severity": "critical",
+    "status": "open",
+    "cvss_version": "4.0",
+    "cvss_vector": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N",
+    "cvss_score": 9.3,
+    "cwe": "CWE-89",
+    "description": "Parametr `id` jest bezpośrednio konkatenowany z zapytaniem SQL.",
+    "impact": "Atakujący bez uwierzytelnienia może odczytać i zmodyfikować całą bazę danych.",
+    "technical_details": "Backend: PostgreSQL 15. Błąd występuje w endpointcie GET /api/v2/orders.",
+    "poc": "1. Wyślij żądanie z payloadem boolean-based:\n```\nsqlmap -u 'https://api.acme.example/v2/orders?id=1' --batch --dbs\n```\n2. sqlmap potwierdza podatność i listuje bazy.",
+    "remediation": "Stosować zapytania parametryzowane (prepared statements).",
+    "refs": "https://owasp.org/www-community/attacks/SQL_Injection\nhttps://cwe.mitre.org/data/definitions/89.html",
+    "created_at": "2026-11-25 18:08:30",
+    "updated_at": "2026-11-25 18:08:30",
+    "targets": [
+     {
+      "id": 2,
+      "report_id": 1,
+      "name": "Public API",
+      "kind": "api",
+      "address": "https://api.acme.example/v2",
+      "description": "",
+      "created_at": "2026-11-25 18:08:30"
+     }
+    ],
+    "evidence": [
+     {
+      "id": 1,
+      "finding_id": 1,
+      "position": 1,
+      "title": "Boolean-based payload",
+      "request": "GET /api/v2/orders?id=1%20AND%201=1 HTTP/1.1\nHost: api.acme.example\nAuthorization: Bearer eyJ...\n\n",
+      "response": "HTTP/1.1 200 OK\nContent-Type: application/json\n\n[{\"id\":1,\"total\":129.99}]",
+      "source": "manual",
+      "created_at": "2026-11-25 18:08:30"
+     }
+    ],
+    "display_id": "ACME-001",
+    "cwe_name": "Improper Neutralization of Special Elements used in an SQL Command ('SQL Injection')"
+   },
+   {
+    "id": 2,
+    "report_id": 1,
+    "position": 2,
+    "title": "IDOR – dostęp do zamówień innych użytkowników",
+    "severity": "medium",
+    "status": "open",
+    "cvss_version": "3.1",
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N",
+    "cvss_score": 6.5,
+    "cwe": "CWE-639",
+    "description": "Zmiana identyfikatora zamówienia w ścieżce zwraca dane innego klienta.",
+    "impact": "",
+    "technical_details": "",
+    "poc": "",
+    "remediation": "",
+    "refs": "",
+    "created_at": "2026-11-25 18:08:30",
+    "updated_at": "2026-11-25 18:08:30",
+    "targets": [
+     {
+      "id": 2,
+      "report_id": 1,
+      "name": "Public API",
+      "kind": "api",
+      "address": "https://api.acme.example/v2",
+      "description": "",
+      "created_at": "2026-11-25 18:08:30"
+     }
+    ],
+    "evidence": [],
+    "display_id": "ACME-002",
+    "cwe_name": "Authorization Bypass Through User-Controlled Key"
+   },
+   {
+    "id": 3,
+    "report_id": 1,
+    "position": 3,
+    "title": "Stored XSS w komentarzach",
+    "severity": "medium",
+    "status": "open",
+    "cvss_version": "3.1",
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:R/S:C/C:L/I:L/A:N",
+    "cvss_score": 5.4,
+    "cwe": "CWE-79",
+    "description": "Treść komentarza jest renderowana bez kodowania: <script>alert(document.domain)</script>",
+    "impact": "",
+    "technical_details": "",
+    "poc": "```html\n<img src=x onerror=alert(document.domain)>\n```",
+    "remediation": "",
+    "refs": "",
+    "created_at": "2026-11-25 18:08:30",
+    "updated_at": "2026-11-25 18:08:30",
+    "targets": [
+     {
+      "id": 1,
+      "report_id": 1,
+      "name": "Customer portal",
+      "kind": "web",
+      "address": "https://portal.acme.example",
+      "description": "",
+      "created_at": "2026-11-25 18:08:30"
+     }
+    ],
+    "evidence": [],
+    "display_id": "ACME-003",
+    "cwe_name": "Improper Neutralization of Input During Web Page Generation ('Cross-site Scripting')"
+   },
+   {
+    "id": 4,
+    "report_id": 1,
+    "position": 4,
+    "title": "Panel administracyjny dostępny z internetu",
+    "severity": "medium",
+    "status": "risk_accepted",
+    "cvss_version": "4.0",
+    "cvss_vector": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:L/VI:N/VA:N/SC:N/SI:N/SA:N",
+    "cvss_score": 6.9,
+    "cwe": "CWE-284",
+    "description": "",
+    "impact": "",
+    "technical_details": "",
+    "poc": "",
+    "remediation": "",
+    "refs": "",
+    "created_at": "2026-11-25 18:08:30",
+    "updated_at": "2026-11-25 18:08:30",
+    "targets": [
+     {
+      "id": 3,
+      "report_id": 1,
+      "name": "Admin panel",
+      "kind": "web",
+      "address": "https://admin.acme.example",
+      "description": "",
+      "created_at": "2026-11-25 18:08:30"
+     }
+    ],
+    "evidence": [],
+    "display_id": "ACME-004",
+    "cwe_name": "Improper Access Control"
+   },
+   {
+    "id": 5,
+    "report_id": 1,
+    "position": 5,
+    "title": "Brak nagłówków bezpieczeństwa",
+    "severity": "low",
+    "status": "open",
+    "cvss_version": "",
+    "cvss_vector": "",
+    "cvss_score": null,
+    "cwe": "CWE-693",
+    "description": "",
+    "impact": "",
+    "technical_details": "",
+    "poc": "",
+    "remediation": "",
+    "refs": "",
+    "created_at": "2026-11-25 18:08:30",
+    "updated_at": "2026-11-25 18:08:30",
+    "targets": [
+     {
+      "id": 3,
+      "report_id": 1,
+      "name": "Admin panel",
+      "kind": "web",
+      "address": "https://admin.acme.example",
+      "description": "",
+      "created_at": "2026-11-25 18:08:30"
+     },
+     {
+      "id": 1,
+      "report_id": 1,
+      "name": "Customer portal",
+      "kind": "web",
+      "address": "https://portal.acme.example",
+      "description": "",
+      "created_at": "2026-11-25 18:08:30"
+     },
+     {
+      "id": 2,
+      "report_id": 1,
+      "name": "Public API",
+      "kind": "api",
+      "address": "https://api.acme.example/v2",
+      "description": "",
+      "created_at": "2026-11-25 18:08:30"
+     }
+    ],
+    "evidence": [],
+    "display_id": "ACME-005",
+    "cwe_name": "Protection Mechanism Failure"
+   }
+  ],
+  "counts": {
+   "critical": 1,
+   "high": 0,
+   "medium": 3,
+   "low": 1,
+   "info": 0
+  },
+  "lang": "pl"
+ },
+ {
+  "report": {
+   "id": 2,
+   "title": "Internal network assessment Q4",
+   "client_name": "Nordbank S.A.",
+   "assessor": "Anna Nowak",
+   "start_date": "2026-10-06",
+   "end_date": "2026-10-17",
+   "language": "en",
+   "finding_prefix": "NB",
+   "executive_summary": "",
+   "scope": "",
+   "methodology": "",
+   "created_at": "2026-11-25 18:08:30",
+   "updated_at": "2026-11-25 18:08:30"
+  },
+  "targets": [
+   {
+    "id": 4,
+    "report_id": 2,
+    "name": "Corporate LAN",
+    "kind": "network",
+    "address": "10.20.0.0/16",
+    "description": "",
+    "created_at": "2026-11-25 18:08:30"
+   }
+  ],
+  "findings": [
+   {
+    "id": 6,
+    "report_id": 2,
+    "position": 1,
+    "title": "SMB signing not required",
+    "severity": "high",
+    "status": "open",
+    "cvss_version": "3.1",
+    "cvss_vector": "CVSS:3.1/AV:A/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N",
+    "cvss_score": 8.1,
+    "cwe": "CWE-294",
+    "description": "",
+    "impact": "",
+    "technical_details": "",
+    "poc": "",
+    "remediation": "",
+    "refs": "",
+    "created_at": "2026-11-25 18:08:30",
+    "updated_at": "2026-11-25 18:08:30",
+    "targets": [
+     {
+      "id": 4,
+      "report_id": 2,
+      "name": "Corporate LAN",
+      "kind": "network",
+      "address": "10.20.0.0/16",
+      "description": "",
+      "created_at": "2026-11-25 18:08:30"
+     }
+    ],
+    "evidence": [],
+    "display_id": "NB-001",
+    "cwe_name": "Authentication Bypass by Capture-replay"
+   },
+   {
+    "id": 7,
+    "report_id": 2,
+    "position": 2,
+    "title": "Default credentials on printer web panels",
+    "severity": "medium",
+    "status": "open",
+    "cvss_version": "",
+    "cvss_vector": "",
+    "cvss_score": null,
+    "cwe": "CWE-1392",
+    "description": "",
+    "impact": "",
+    "technical_details": "",
+    "poc": "",
+    "remediation": "",
+    "refs": "",
+    "created_at": "2026-11-25 18:08:30",
+    "updated_at": "2026-11-25 18:08:30",
+    "targets": [
+     {
+      "id": 4,
+      "report_id": 2,
+      "name": "Corporate LAN",
+      "kind": "network",
+      "address": "10.20.0.0/16",
+      "description": "",
+      "created_at": "2026-11-25 18:08:30"
+     }
+    ],
+    "evidence": [],
+    "display_id": "NB-002",
+    "cwe_name": "Use of Default Credentials"
+   }
+  ],
+  "counts": {
+   "critical": 0,
+   "high": 1,
+   "medium": 1,
+   "low": 0,
+   "info": 0
+  },
+  "lang": "en"
+ },
+ {
+  "report": {
+   "id": 3,
+   "title": "Mobile banking app – iOS & Android",
+   "client_name": "Nordbank S.A.",
+   "assessor": "Jan Kowalski",
+   "start_date": "2026-11-17",
+   "end_date": null,
+   "language": "en",
+   "finding_prefix": "MOB",
+   "executive_summary": "",
+   "scope": "",
+   "methodology": "",
+   "created_at": "2026-11-25 18:08:30",
+   "updated_at": "2026-11-25 18:08:30"
+  },
+  "targets": [],
+  "findings": [],
+  "counts": {
+   "critical": 0,
+   "high": 0,
+   "medium": 0,
+   "low": 0,
+   "info": 0
+  },
+  "lang": "en"
+ }
+]

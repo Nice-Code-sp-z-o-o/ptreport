@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, crumbs %}
+{% block title %}Import scanner results · {{ report.title }}{% endblock %}
+{% block content %}
+<div class="stack-lg narrow">
+  {{ crumbs([('Reports', url_for('web.index'), False), (report.title, url_for('web.report_detail', report_id=report.id), False), ('Scanner import', None, True)]) }}
+  <h1>Import scanner results</h1>
+  <p class="prose">Upload a report from a scanner. You will see what was found and pick the targets and findings to add to <strong>{{ report.title }}</strong>. Nothing is added before you confirm.</p>
+  {% if errors %}
+    <div class="flash flash-error" role="alert">
+      {{ icon('alert') }}
+      <div class="flash-body"><strong>Import failed:</strong>
+        <ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul>
+      </div>
+    </div>
+  {% endif %}
+  <form method="post" enctype="multipart/form-data" class="panel stack-lg">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <div class="field">
+      <label for="f-file">Scanner file <span class="req" aria-hidden="true">*</span></label>
+      <input class="file-input" id="f-file" type="file" name="file" accept=".xml,.nessus,application/xml,text/xml" required>
+      <p class="hint">Burp Suite "Report issues" XML, Nessus .nessus, Nmap -oX, OWASP ZAP XML report, OpenVAS/Greenbone XML. Up to 50 MB.</p>
+    </div>
+    <div class="field">
+      <label for="f-format">Format</label>
+      <div class="select-wrap">
+        <select class="select" id="f-format" name="format">
+          <option value="">Detect automatically</option>
+          {% for f in formats %}<option value="{{ f }}">{{ format_labels[f] }}</option>{% endfor %}
+        </select>
+        {{ icon('chevron-down') }}
+      </div>
+    </div>
+    <label class="check"><input type="checkbox" name="include_info" value="1"><span class="check-text">Include informational issues<span class="muted"> (left out by default, scanners report many)</span></span></label>
+    <div class="cluster">
+      <button class="btn btn-primary" type="submit">{{ icon('upload') }}Read file</button>
+      <a class="btn btn-ghost" href="{{ url_for('web.report_detail', report_id=report.id) }}">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

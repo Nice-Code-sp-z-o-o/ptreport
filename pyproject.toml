@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ptreport"
+version = "0.1.0"
+description = "Local-first penetration test report generator (SQLite, single command)."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+    "flask>=3.1.3,<4",
+    "cvss>=3.6,<4",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=9"]
+
+[project.scripts]
+ptreport = "ptreport.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+ptreport = ["templates/*.html", "templates/*/*.html", "static/*", "static/fonts/*", "latex/*.tex", "data/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "B", "S", "UP"]
+ignore = [
+    "S608",  # SQL is built only from constant column lists; values are always bound
+    "E501",  # metric/CWE/label tables are clearer on one line
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101", "S105"]

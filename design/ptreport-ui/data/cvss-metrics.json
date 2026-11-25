@@ -1,0 +1,904 @@
+{
+ "4.0": {
+  "prefix": "CVSS:4.0",
+  "groups": [
+   {
+    "name": "Base: Exploitability",
+    "required": true,
+    "metrics": [
+     {
+      "key": "AV",
+      "name": "Attack Vector",
+      "values": [
+       {
+        "key": "N",
+        "name": "Network"
+       },
+       {
+        "key": "A",
+        "name": "Adjacent"
+       },
+       {
+        "key": "L",
+        "name": "Local"
+       },
+       {
+        "key": "P",
+        "name": "Physical"
+       }
+      ]
+     },
+     {
+      "key": "AC",
+      "name": "Attack Complexity",
+      "values": [
+       {
+        "key": "L",
+        "name": "Low"
+       },
+       {
+        "key": "H",
+        "name": "High"
+       }
+      ]
+     },
+     {
+      "key": "AT",
+      "name": "Attack Requirements",
+      "values": [
+       {
+        "key": "N",
+        "name": "None"
+       },
+       {
+        "key": "P",
+        "name": "Present"
+       }
+      ]
+     },
+     {
+      "key": "PR",
+      "name": "Privileges Required",
+      "values": [
+       {
+        "key": "N",
+        "name": "None"
+       },
+       {
+        "key": "L",
+        "name": "Low"
+       },
+       {
+        "key": "H",
+        "name": "High"
+       }
+      ]
+     },
+     {
+      "key": "UI",
+      "name": "User Interaction",
+      "values": [
+       {
+        "key": "N",
+        "name": "None"
+       },
+       {
+        "key": "P",
+        "name": "Passive"
+       },
+       {
+        "key": "A",
+        "name": "Active"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "name": "Base: Vulnerable System Impact",
+    "required": true,
+    "metrics": [
+     {
+      "key": "VC",
+      "name": "Confidentiality",
+      "values": [
+       {
+        "key": "H",
+        "name": "High"
+       },
+       {
+        "key": "L",
+        "name": "Low"
+       },
+       {
+        "key": "N",
+        "name": "None"
+       }
+      ]
+     },
+     {
+      "key": "VI",
+      "name": "Integrity",
+      "values": [
+       {
+        "key": "H",
+        "name": "High"
+       },
+       {
+        "key": "L",
+        "name": "Low"
+       },
+       {
+        "key": "N",
+        "name": "None"
+       }
+      ]
+     },
+     {
+      "key": "VA",
+      "name": "Availability",
+      "values": [
+       {
+        "key": "H",
+        "name": "High"
+       },
+       {
+        "key": "L",
+        "name": "Low"
+       },
+       {
+        "key": "N",
+        "name": "None"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "name": "Base: Subsequent System Impact",
+    "required": true,
+    "metrics": [
+     {
+      "key": "SC",
+      "name": "Confidentiality",
+      "values": [
+       {
+        "key": "H",
+        "name": "High"
+       },
+       {
+        "key": "L",
+        "name": "Low"
+       },
+       {
+        "key": "N",
+        "name": "None"
+       }
+      ]
+     },
+     {
+      "key": "SI",
+      "name": "Integrity",
+      "values": [
+       {
+        "key": "H",
+        "name": "High"
+       },
+       {
+        "key": "L",
+        "name": "Low"
+       },
+       {
+        "key": "N",
+        "name": "None"
+       }
+      ]
+     },
+     {
+      "key": "SA",
+      "name": "Availability",
+      "values": [
+       {
+        "key": "H",
+        "name": "High"
+       },
+       {
+        "key": "L",
+        "name": "Low"
+       },
+       {
+        "key": "N",
+        "name": "None"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "name": "Threat",
+    "required": false,
+    "not_defined": "X",
+    "metrics": [
+     {
+      "key": "E",
+      "name": "Exploit Maturity",
+      "values": [
+       {
+        "key": "X",
+        "name": "Not Defined"
+       },
+       {
+        "key": "A",
+        "name": "Attacked"
+       },
+       {
+        "key": "P",
+        "name": "POC"
+       },
+       {
+        "key": "U",
+        "name": "Unreported"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ "3.1": {
+  "prefix": "CVSS:3.1",
+  "groups": [
+   {
+    "name": "Base",
+    "required": true,
+    "metrics": [
+     {
+      "key": "AV",
+      "name": "Attack Vector",
+      "values": [
+       {
+        "key": "N",
+        "name": "Network"
+       },
+       {
+        "key": "A",
+        "name": "Adjacent"
+       },
+       {
+        "key": "L",
+        "name": "Local"
+       },
+       {
+        "key": "P",
+        "name": "Physical"
+       }
+      ]
+     },
+     {
+      "key": "AC",
+      "name": "Attack Complexity",
+      "values": [
+       {
+        "key": "L",
+        "name": "Low"
+       },
+       {
+        "key": "H",
+        "name": "High"
+       }
+      ]
+     },
+     {
+      "key": "PR",
+      "name": "Privileges Required",
+      "values": [
+       {
+        "key": "N",
+        "name": "None"
+       },
+       {
+        "key": "L",
+        "name": "Low"
+       },
+       {
+        "key": "H",
+        "name": "High"
+       }
+      ]
+     },
+     {
+      "key": "UI",
+      "name": "User Interaction",
+      "values": [
+       {
+        "key": "N",
+        "name": "None"
+       },
+       {
+        "key": "R",
+        "name": "Required"
+       }
+      ]
+     },
+     {
+      "key": "S",
+      "name": "Scope",
+      "values": [
+       {
+        "key": "U",
+        "name": "Unchanged"
+       },
+       {
+        "key": "C",
+        "name": "Changed"
+       }
+      ]
+     },
+     {
+      "key": "C",
+      "name": "Confidentiality",
+      "values": [
+       {
+        "key": "H",
+        "name": "High"
+       },
+       {
+        "key": "L",
+        "name": "Low"
+       },
+       {
+        "key": "N",
+        "name": "None"
+       }
+      ]
+     },
+     {
+      "key": "I",
+      "name": "Integrity",
+      "values": [
+       {
+        "key": "H",
+        "name": "High"
+       },
+       {
+        "key": "L",
+        "name": "Low"
+       },
+       {
+        "key": "N",
+        "name": "None"
+       }
+      ]
+     },
+     {
+      "key": "A",
+      "name": "Availability",
+      "values": [
+       {
+        "key": "H",
+        "name": "High"
+       },
+       {
+        "key": "L",
+        "name": "Low"
+       },
+       {
+        "key": "N",
+        "name": "None"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "name": "Temporal",
+    "required": false,
+    "not_defined": "X",
+    "metrics": [
+     {
+      "key": "E",
+      "name": "Exploit Code Maturity",
+      "values": [
+       {
+        "key": "X",
+        "name": "Not Defined"
+       },
+       {
+        "key": "U",
+        "name": "Unproven"
+       },
+       {
+        "key": "P",
+        "name": "Proof-of-Concept"
+       },
+       {
+        "key": "F",
+        "name": "Functional"
+       },
+       {
+        "key": "H",
+        "name": "High"
+       }
+      ]
+     },
+     {
+      "key": "RL",
+      "name": "Remediation Level",
+      "values": [
+       {
+        "key": "X",
+        "name": "Not Defined"
+       },
+       {
+        "key": "O",
+        "name": "Official Fix"
+       },
+       {
+        "key": "T",
+        "name": "Temporary Fix"
+       },
+       {
+        "key": "W",
+        "name": "Workaround"
+       },
+       {
+        "key": "U",
+        "name": "Unavailable"
+       }
+      ]
+     },
+     {
+      "key": "RC",
+      "name": "Report Confidence",
+      "values": [
+       {
+        "key": "X",
+        "name": "Not Defined"
+       },
+       {
+        "key": "U",
+        "name": "Unknown"
+       },
+       {
+        "key": "R",
+        "name": "Reasonable"
+       },
+       {
+        "key": "C",
+        "name": "Confirmed"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ "3.0": {
+  "prefix": "CVSS:3.0",
+  "groups": [
+   {
+    "name": "Base",
+    "required": true,
+    "metrics": [
+     {
+      "key": "AV",
+      "name": "Attack Vector",
+      "values": [
+       {
+        "key": "N",
+        "name": "Network"
+       },
+       {
+        "key": "A",
+        "name": "Adjacent"
+       },
+       {
+        "key": "L",
+        "name": "Local"
+       },
+       {
+        "key": "P",
+        "name": "Physical"
+       }
+      ]
+     },
+     {
+      "key": "AC",
+      "name": "Attack Complexity",
+      "values": [
+       {
+        "key": "L",
+        "name": "Low"
+       },
+       {
+        "key": "H",
+        "name": "High"
+       }
+      ]
+     },
+     {
+      "key": "PR",
+      "name": "Privileges Required",
+      "values": [
+       {
+        "key": "N",
+        "name": "None"
+       },
+       {
+        "key": "L",
+        "name": "Low"
+       },
+       {
+        "key": "H",
+        "name": "High"
+       }
+      ]
+     },
+     {
+      "key": "UI",
+      "name": "User Interaction",
+      "values": [
+       {
+        "key": "N",
+        "name": "None"
+       },
+       {
+        "key": "R",
+        "name": "Required"
+       }
+      ]
+     },
+     {
+      "key": "S",
+      "name": "Scope",
+      "values": [
+       {
+        "key": "U",
+        "name": "Unchanged"
+       },
+       {
+        "key": "C",
+        "name": "Changed"
+       }
+      ]
+     },
+     {
+      "key": "C",
+      "name": "Confidentiality",
+      "values": [
+       {
+        "key": "H",
+        "name": "High"
+       },
+       {
+        "key": "L",
+        "name": "Low"
+       },
+       {
+        "key": "N",
+        "name": "None"
+       }
+      ]
+     },
+     {
+      "key": "I",
+      "name": "Integrity",
+      "values": [
+       {
+        "key": "H",
+        "name": "High"
+       },
+       {
+        "key": "L",
+        "name": "Low"
+       },
+       {
+        "key": "N",
+        "name": "None"
+       }
+      ]
+     },
+     {
+      "key": "A",
+      "name": "Availability",
+      "values": [
+       {
+        "key": "H",
+        "name": "High"
+       },
+       {
+        "key": "L",
+        "name": "Low"
+       },
+       {
+        "key": "N",
+        "name": "None"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "name": "Temporal",
+    "required": false,
+    "not_defined": "X",
+    "metrics": [
+     {
+      "key": "E",
+      "name": "Exploit Code Maturity",
+      "values": [
+       {
+        "key": "X",
+        "name": "Not Defined"
+       },
+       {
+        "key": "U",
+        "name": "Unproven"
+       },
+       {
+        "key": "P",
+        "name": "Proof-of-Concept"
+       },
+       {
+        "key": "F",
+        "name": "Functional"
+       },
+       {
+        "key": "H",
+        "name": "High"
+       }
+      ]
+     },
+     {
+      "key": "RL",
+      "name": "Remediation Level",
+      "values": [
+       {
+        "key": "X",
+        "name": "Not Defined"
+       },
+       {
+        "key": "O",
+        "name": "Official Fix"
+       },
+       {
+        "key": "T",
+        "name": "Temporary Fix"
+       },
+       {
+        "key": "W",
+        "name": "Workaround"
+       },
+       {
+        "key": "U",
+        "name": "Unavailable"
+       }
+      ]
+     },
+     {
+      "key": "RC",
+      "name": "Report Confidence",
+      "values": [
+       {
+        "key": "X",
+        "name": "Not Defined"
+       },
+       {
+        "key": "U",
+        "name": "Unknown"
+       },
+       {
+        "key": "R",
+        "name": "Reasonable"
+       },
+       {
+        "key": "C",
+        "name": "Confirmed"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ "2.0": {
+  "prefix": "",
+  "groups": [
+   {
+    "name": "Base",
+    "required": true,
+    "metrics": [
+     {
+      "key": "AV",
+      "name": "Access Vector",
+      "values": [
+       {
+        "key": "L",
+        "name": "Local"
+       },
+       {
+        "key": "A",
+        "name": "Adjacent Network"
+       },
+       {
+        "key": "N",
+        "name": "Network"
+       }
+      ]
+     },
+     {
+      "key": "AC",
+      "name": "Access Complexity",
+      "values": [
+       {
+        "key": "H",
+        "name": "High"
+       },
+       {
+        "key": "M",
+        "name": "Medium"
+       },
+       {
+        "key": "L",
+        "name": "Low"
+       }
+      ]
+     },
+     {
+      "key": "Au",
+      "name": "Authentication",
+      "values": [
+       {
+        "key": "M",
+        "name": "Multiple"
+       },
+       {
+        "key": "S",
+        "name": "Single"
+       },
+       {
+        "key": "N",
+        "name": "None"
+       }
+      ]
+     },
+     {
+      "key": "C",
+      "name": "Confidentiality Impact",
+      "values": [
+       {
+        "key": "N",
+        "name": "None"
+       },
+       {
+        "key": "P",
+        "name": "Partial"
+       },
+       {
+        "key": "C",
+        "name": "Complete"
+       }
+      ]
+     },
+     {
+      "key": "I",
+      "name": "Integrity Impact",
+      "values": [
+       {
+        "key": "N",
+        "name": "None"
+       },
+       {
+        "key": "P",
+        "name": "Partial"
+       },
+       {
+        "key": "C",
+        "name": "Complete"
+       }
+      ]
+     },
+     {
+      "key": "A",
+      "name": "Availability Impact",
+      "values": [
+       {
+        "key": "N",
+        "name": "None"
+       },
+       {
+        "key": "P",
+        "name": "Partial"
+       },
+       {
+        "key": "C",
+        "name": "Complete"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "name": "Temporal",
+    "required": false,
+    "not_defined": "ND",
+    "metrics": [
+     {
+      "key": "E",
+      "name": "Exploitability",
+      "values": [
+       {
+        "key": "ND",
+        "name": "Not Defined"
+       },
+       {
+        "key": "U",
+        "name": "Unproven"
+       },
+       {
+        "key": "POC",
+        "name": "Proof-of-Concept"
+       },
+       {
+        "key": "F",
+        "name": "Functional"
+       },
+       {
+        "key": "H",
+        "name": "High"
+       }
+      ]
+     },
+     {
+      "key": "RL",
+      "name": "Remediation Level",
+      "values": [
+       {
+        "key": "ND",
+        "name": "Not Defined"
+       },
+       {
+        "key": "OF",
+        "name": "Official Fix"
+       },
+       {
+        "key": "TF",
+        "name": "Temporary Fix"
+       },
+       {
+        "key": "W",
+        "name": "Workaround"
+       },
+       {
+        "key": "U",
+        "name": "Unavailable"
+       }
+      ]
+     },
+     {
+      "key": "RC",
+      "name": "Report Confidence",
+      "values": [
+       {
+        "key": "ND",
+        "name": "Not Defined"
+       },
+       {
+        "key": "UC",
+        "name": "Unconfirmed"
+       },
+       {
+        "key": "UR",
+        "name": "Uncorroborated"
+       },
+       {
+        "key": "C",
+        "name": "Confirmed"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ }
+}

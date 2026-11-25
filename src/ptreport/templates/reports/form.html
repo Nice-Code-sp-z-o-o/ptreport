@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% from "_macros.html" import input, textarea, select, flash, crumbs %}
+{% block title %}{{ 'Edit report' if report else 'New report' }}{% endblock %}
+{% block content %}
+<div class="stack-lg">
+  {% if report %}
+    {{ crumbs([('Reports', url_for('web.index'), False), (report.title, url_for('web.report_detail', report_id=report.id), False), ('Edit', None, False)]) }}
+  {% else %}
+    {{ crumbs([('Reports', url_for('web.index'), False), ('New report', None, False)]) }}
+  {% endif %}
+  <h1>{{ 'Edit report' if report else 'New report' }}</h1>
+  {% if errors %}{{ flash('error', 'Please fix the highlighted fields.') }}{% endif %}
+  <form method="post" class="panel stack-lg" novalidate data-validate>
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <div class="grid-2">
+      {{ input('title', 'Report title', values, errors, required=True, maxlength=300, placeholder='External web application penetration test') }}
+      {{ select('language', 'Report language', values, errors, languages, {'en': 'English', 'pl': 'Polski'}) }}
+      {{ input('client_name', 'Client', values, errors, maxlength=300) }}
+      {{ input('assessor', 'Assessor(s)', values, errors, maxlength=300,
+               pattern="[\\p{L}\\s.,'&\\-]*",
+               title="Letters, spaces, commas, dots, apostrophes, hyphens and & only",
+               hint='Comma separated, e.g. "Jan Kowalski, Anna Nowak"') }}
+      <div class="grid-2">
+        {{ input('start_date', 'Start date', values, errors, type='date') }}
+        {{ input('end_date', 'End date', values, errors, type='date') }}
+      </div>
+      {{ input('finding_prefix', 'Finding ID prefix', values, errors, required=True, maxlength=10, mono=True,
+               pattern="[A-Za-z][A-Za-z0-9]{0,9}", title="1-10 letters/digits, starting with a letter",
+               hint='Used by {prefix} in the finding ID format.') }}
+      {{ input('id_format', 'Finding ID format (this report only)', values, errors, maxlength=40, mono=True,
+               placeholder=global_id_format,
+               hint='Leave empty to use the format from Settings: ' ~ global_id_format) }}
+      {{ input('vendor_name', 'Prepared by (company)', values, errors, maxlength=300, placeholder='Your company') }}
+      {{ input('vendor_contact', 'Contact', values, errors, maxlength=300, placeholder='www.example.com, office@example.com') }}
+      <div class="grid-2">
+        {{ input('report_version', 'Report version', values, errors, maxlength=20, mono=True, placeholder='1.0',
+                 pattern="[A-Za-z0-9][A-Za-z0-9._\\-]{0,19}", title="e.g. 1.0") }}
+        {{ input('report_date', 'Report date', values, errors, type='date') }}
+      </div>
+      {{ input('classification', 'Confidentiality label', values, errors, maxlength=60, placeholder='CONFIDENTIAL, TLP:AMBER, POUFNE',
+               hint='Printed on the cover and in every page footer of the PDF.') }}
+    </div>
+    <fieldset class="stack">
+      <legend class="label">Exports</legend>
+      <input type="hidden" name="show_version_history" value="0">
+      <label class="check check-inline"><input type="checkbox" name="show_version_history" value="1"{% if values.get('show_version_history') in (None, 1, '1', True) or (values.getlist and '1' in values.getlist('show_version_history')) %} checked{% endif %}>
+        <span class="check-text">Include the report version history</span></label>
+      <input type="hidden" name="show_finding_history" value="0">
+      <label class="check check-inline"><input type="checkbox" name="show_finding_history" value="1"{% if values.get('show_finding_history') in (None, 1, '1', True) or (values.getlist and '1' in values.getlist('show_finding_history')) %} checked{% endif %}>
+        <span class="check-text">Include each finding's history</span></label>
+      <input type="hidden" name="group_by_cwe" value="0">
+      <label class="check check-inline"><input type="checkbox" name="group_by_cwe" value="1"{% if values.get('group_by_cwe') in (1, '1', True) or (values.getlist and '1' in values.getlist('group_by_cwe')) %} checked{% endif %}>
+        <span class="check-text">Group findings by CWE (a description and a mitigation per group)</span></label>
+    </fieldset>
+    {{ textarea('executive_summary', 'Executive summary', values, errors, rows=6) }}
+    {{ textarea('scope', 'Scope', values, errors, rows=4, hint='Targets are managed separately and listed automatically below the scope.') }}
+    {{ textarea('methodology', 'Methodology', values, errors, rows=4) }}
+    <p class="hint">Text fields support fenced code blocks (<code>```</code>) and <code>`inline code`</code>.</p>
+    <div class="cluster">
+      <button class="btn btn-primary" type="submit">{{ 'Save report' if report else 'Create report' }}</button>
+      <a class="btn btn-ghost" href="{{ url_for('web.report_detail', report_id=report.id) if report else url_for('web.index') }}">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

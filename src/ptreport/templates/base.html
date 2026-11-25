@@ -1,0 +1,56 @@
+{% from "_macros.html" import icon %}
+{% set nav = [('web.index', 'Reports', 'reports'), ('web.templates_list', 'Templates', 'templates'), ('web.report_import', 'Import', 'import'), ('web.settings', 'Settings', 'settings')] %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}ptreport{% endblock %} · ptreport</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='tokens.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='components.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+  <link rel="icon" href="data:,">
+</head>
+<body>
+  {% include "_icons.html" %}
+  <header class="topbar">
+    <a class="brand" href="{{ url_for('web.index') }}">ptreport</a>
+    <nav aria-label="Main">
+      {% for endpoint, label, key in nav %}
+        <a class="nav-link" href="{{ url_for(endpoint) }}"{% if (section|default('reports')) == key %} aria-current="page"{% endif %}>{{ label }}</a>
+      {% endfor %}
+    </nav>
+  </header>
+  <main class="container">
+    {% block content %}{% endblock %}
+  </main>
+  <footer class="footer">ptreport {{ app_version }} · data stays on this machine</footer>
+
+  <div class="toast-stack" role="region" aria-label="Notifications" data-toasts>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}
+        {% set kind = 'error' if category == 'error' else 'success' %}
+        <div class="flash flash-{{ kind }}" role="{{ 'alert' if kind == 'error' else 'status' }}" data-toast>
+          {{ icon('alert' if kind == 'error' else 'check-circle') }}
+          <div class="flash-body"><span>{{ message }}</span></div>
+          <button class="btn btn-icon btn-sm btn-ghost" type="button" aria-label="Dismiss" data-dismiss>{{ icon('x') }}</button>
+        </div>
+      {% endfor %}
+    {% endwith %}
+  </div>
+
+  <dialog class="modal" id="confirm-dialog" aria-labelledby="confirm-dialog-title">
+    <form method="dialog">
+      <div class="modal-body"><h2 id="confirm-dialog-title">Please confirm</h2><p data-confirm-text></p></div>
+      <div class="modal-foot">
+        <button class="btn btn-ghost" value="cancel" autofocus>Cancel</button>
+        <button class="btn btn-danger-solid" value="confirm" data-confirm-ok>Confirm</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+  {% block dialogs %}{% endblock %}
+  {% block scripts %}{% endblock %}
+</body>
+</html>

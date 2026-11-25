@@ -1,0 +1,223 @@
+{% from "_macros.html" import cvss_chip, vector_strip %}<!doctype html>
+<html lang="{{ lang }}" data-theme="report">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ report.title }}</title>
+  {% if inline_css %}<style>{{ inline_css|safe }}
+:root { --brand: #{{ brand.color }}; }</style>{% else %}<link rel="stylesheet" href="{{ url_for('static', filename='report.css') }}"><link rel="stylesheet" href="{{ url_for('web.brand_css') }}">{% endif %}
+</head>
+<body class="report">
+{% if preview %}
+  <div class="preview-bar no-print">Preview · use your browser's <strong>Print → Save as PDF</strong> to create a PDF.</div>
+{% endif %}
+{% set sev = sev_labels %}{% set st = status_labels %}{% set kinds = TARGET_KIND_LABELS[lang] %}
+
+<section class="cover">
+  <div class="cover-band">
+    {% if brand.logo %}<img class="cover-logo" src="{{ brand.logo.src }}" alt="{{ report.vendor_name or 'Logo' }}">{% elif report.vendor_name %}<p class="cover-vendor">{{ report.vendor_name }}</p>{% endif %}
+    <p class="eyebrow">{{ L.report }}</p>
+    <h1>{{ report.title }}</h1>
+    {% if report.client_name %}<p class="cover-client">{{ report.client_name }}</p>{% endif %}
+  </div>
+  <dl class="meta">
+    {% if report.client_name %}<dt>{{ L.client }}</dt><dd>{{ report.client_name }}</dd>{% endif %}
+    {% if report.assessor %}<dt>{{ L.assessor }}</dt><dd>{{ report.assessor }}</dd>{% endif %}
+    {% if report.start_date or report.end_date %}<dt>{{ L.period }}</dt><dd>{{ report.start_date or '' }}{% if report.start_date and report.end_date %} – {% endif %}{{ report.end_date or '' }}</dd>{% endif %}
+    {% if report.vendor_name %}<dt>{{ L.prepared_by }}</dt><dd>{{ report.vendor_name }}</dd>{% endif %}
+    {% if report.vendor_contact %}<dt>{{ L.contact }}</dt><dd>{{ report.vendor_contact }}</dd>{% endif %}
+    {% if report.report_version %}<dt>{{ L.version }}</dt><dd>{{ report.report_version }}</dd>{% endif %}
+    {% if report.report_date %}<dt>{{ L.report_date }}</dt><dd>{{ report.report_date }}</dd>{% endif %}
+    <dt>{{ L.generated }}</dt><dd>{{ generated_at }}</dd>
+  </dl>
+  {% if report.classification %}<p class="classification">{{ report.classification }}</p>{% endif %}
+</section>
+
+{% if versions %}
+<section class="versions">
+  <h2>{{ L.version_history }}</h2>
+  <table class="tbl">
+    <thead><tr><th>{{ L.version }}</th><th>{{ L.date }}</th>{% if versions_have_author %}<th>{{ L.author }}</th>{% endif %}<th>{{ L.description }}</th></tr></thead>
+    <tbody>{% for v in versions %}<tr><td class="mono">{{ v.version }}</td><td class="mono nowrap">{{ v.date or '' }}</td>{% if versions_have_author %}<td>{{ v.author }}</td>{% endif %}<td>{{ v.description }}</td></tr>{% endfor %}</tbody>
+  </table>
+</section>
+{% endif %}
+
+{% macro findings_table() %}
+  {% if findings %}
+    <table class="tbl">
+      <thead><tr><th>{{ L.no }}</th><th>{{ L.id }}</th><th>{{ L.title }}</th><th>{{ L.severity }}</th><th>{{ cvss_header }}</th><th>{{ L.status }}</th></tr></thead>
+      <tbody>
+        {% for f in findings %}
+          <tr>
+            <td class="mono nowrap">{{ '%02d.'|format(loop.index) }}</td>
+            <td class="mono nowrap"><a href="#f-{{ f.id }}">{{ f.display_id }}</a></td>
+            <td>{{ f.title }}</td>
+            <td><span class="sev sev-{{ f.severity }}">{{ sev_labels[f.severity] }}</span></td>
+            <td>{% if f.cvss_score is not none %}{{ cvss_chip(f, lang) }}{% else %}—{% endif %}</td>
+            <td>{{ status_labels[f.status] }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}<p>{{ L.no_findings }}</p>{% endif %}
+{% endmacro %}
+
+{% macro retest_summary() %}
+  {% if original_report %}<p>{{ L.original_report }}: <strong>{{ original_report.title }}</strong>{% if original_report.report_date %} ({{ L.original_date }} <span class="mono">{{ original_report.report_date }}</span>){% endif %}</p>{% endif %}
+  {% if findings %}
+    <div class="retest-counts">{% for key, label in retest_labels.items() if retest_counts[key] %}<span><span class="retest retest-{{ key or 'none' }}">{{ label }}</span>: <strong>{{ retest_counts[key] }}</strong></span>{% endfor %}</div>
+    <table class="tbl">
+      <thead><tr><th>{{ L.id }}</th><th>{{ L.title }}</th><th>{{ L.severity }}</th><th>{{ L.retest_result }}</th><th>{{ L.retest_date }}</th></tr></thead>
+      <tbody>
+        {% for f in findings %}
+          <tr>
+            <td class="mono nowrap"><a href="#f-{{ f.id }}">{{ f.display_id }}</a></td>
+            <td>{{ f.title }}</td>
+            <td><span class="sev sev-{{ f.severity }}">{{ sev_labels[f.severity] }}</span></td>
+            <td><span class="retest retest-{{ f.retest_result or 'none' }}">{{ retest_labels[f.retest_result] }}</span></td>
+            <td class="mono nowrap">{{ f.retest_date or '' }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}<p>{{ L.no_findings }}</p>{% endif %}
+{% endmacro %}
+
+{% macro severity_bars() %}
+  {% set total = findings|length %}
+  <div class="sev-bars">
+    {% for s in severities %}
+      <div class="sev-bar-row">
+        <span class="sev-name">{{ sev_labels[s] }}</span>
+        <svg class="sev-track" viewBox="0 0 100 10" preserveAspectRatio="none" aria-hidden="true"><rect class="track" width="100" height="10"/><rect class="sev-fill-{{ s }}" width="{{ (100 * counts[s] / total)|round(2) if total else 0 }}" height="10"/></svg>
+        <span class="sev-count">{{ counts[s] }}</span>
+      </div>
+    {% endfor %}
+    <div class="sev-bar-row total"><span class="sev-name">{{ L.total }}</span><span></span><span class="sev-count">{{ total }}</span></div>
+  </div>
+{% endmacro %}
+
+{% macro charts() %}
+  <h4>{{ L.chart_severity }}</h4>
+  {{ severity_bars() }}
+  {% if per_target %}
+    <h4>{{ L.chart_targets }}</h4>
+    <table class="tbl">
+      <thead><tr><th>{{ L.target }}</th>{% for s in severities %}<th class="num">{{ sev_labels[s] }}</th>{% endfor %}<th class="num">{{ L.total }}</th></tr></thead>
+      <tbody>{% for t in per_target %}<tr><td>{{ t.name }}</td>{% for s in severities %}<td class="num">{{ t.counts[s] or '' }}</td>{% endfor %}<td class="num"><strong>{{ t.total }}</strong></td></tr>{% endfor %}</tbody>
+    </table>
+  {% endif %}
+  <h4>{{ L.chart_matrix }}</h4>
+  <table class="tbl matrix">
+    <thead><tr><th>{{ L.severity }} \ {{ L.cvss_score }}</th>{% for r in ratings %}<th class="num">{{ r|cvss_rating_name(lang) }}</th>{% endfor %}<th class="num">{{ L.no_cvss }}</th></tr></thead>
+    <tbody>{% for s in severities %}<tr><td><span class="sev sev-{{ s }}">{{ sev_labels[s] }}</span></td>{% for r in ratings %}<td class="num">{{ matrix[s][r] or '' }}</td>{% endfor %}<td class="num">{{ matrix[s][''] or '' }}</td></tr>{% endfor %}</tbody>
+  </table>
+{% endmacro %}
+
+{% macro finding(f, grouped=False) %}
+    <article class="finding" id="f-{{ f.id }}">
+      <header class="finding-head">
+        <p class="finding-id mono">{{ f.display_id }}{% if f.status != 'open' %} · {{ status_labels[f.status] }}{% endif %}</p>
+        {% if grouped %}<h4 class="finding-title">{{ f.title }}</h4>{% else %}<h3>{{ f.title }}</h3>{% endif %}
+      </header>
+      <div class="risk-band risk-{{ f.severity }}">
+        <strong>{{ sev_labels[f.severity] }}</strong>
+        <span>{% if f.cvss_score is not none %}CVSS {{ f.cvss_version }} <b>{{ '%.1f'|format(f.cvss_score) }}</b>{% endif %}{% if f.cwe %} &nbsp; {{ f.cwe }}{% endif %} &nbsp; {{ status_labels[f.status] }}</span>
+      </div>
+      <table class="facts facts-banded">
+        {% if f.targets %}<tr><th>{{ L.affected }}</th><td>{% for t in f.targets %}{{ t.name }}{% if t.address %} <span class="mono small">({{ t.address }})</span>{% endif %}{% if not loop.last %}<br>{% endif %}{% endfor %}</td></tr>{% endif %}
+        {% if f.cvss_vector %}<tr><th>CVSS {{ f.cvss_version }}</th><td>{{ cvss_chip(f, lang) }} <span class="mono small break">{{ f.cvss_vector }}</span>{{ vector_strip(f.cvss_vector) }}</td></tr>{% endif %}
+        {% if f.cwe and not grouped %}<tr><th>{{ L.cwe }}</th><td><a href="{{ f.cwe|cwe_url }}" rel="noopener noreferrer">{{ f.cwe }}</a>{% if f.cwe|cwe_name %}: {{ f.cwe|cwe_name }}{% endif %}</td></tr>{% endif %}
+        <tr><th>{{ L.status }}</th><td>{{ status_labels[f.status] }}</td></tr>
+        {% if f.confidence %}<tr><th>{{ L.confidence }}</th><td>{{ conf_labels[f.confidence] }}</td></tr>{% endif %}
+        {% if f.retest_result %}<tr><th>{{ L.retest }}</th><td><span class="retest retest-{{ f.retest_result }}">{{ retest_labels[f.retest_result] }}</span>{% if f.retest_date %} <span class="mono small">{{ f.retest_date }}</span>{% endif %}</td></tr>{% endif %}
+      </table>
+      {% if f.retest_notes %}<h5>{{ L.retest_notes }}</h5><div class="rt-block">{{ f.retest_notes|richtext }}</div>{% endif %}
+      {% for key in ['description', 'impact', 'technical_details', 'poc'] %}
+        {% if f[key] %}<h5>{{ L[key] }}</h5><div class="rt-block">{{ f[key]|richtext }}</div>{% endif %}
+      {% endfor %}
+      {% for a in f.attachments %}
+        <figure class="figure" id="figure-{{ a.figure }}">
+          <img src="{{ a.src }}" alt="{{ a.caption or (L.figure ~ ' ' ~ a.figure) }}">
+          <figcaption>{{ L.figure }} {{ a.figure }}{% if a.caption %}: {{ a.caption }}{% endif %}</figcaption>
+        </figure>
+      {% endfor %}
+      {% if f.evidence %}
+        <h5>{{ L.evidence }}</h5>
+        {% for e in f.evidence %}
+          <div class="evidence">
+            {% if e.title %}<p class="evidence-title">{{ e.title }}</p>{% endif %}
+            <p class="evidence-label">{{ L.request }}</p>
+            <pre class="http">{{ e.request }}</pre>
+            {% if e.response %}<p class="evidence-label">{{ L.response }}</p><pre class="http">{{ e.response }}</pre>{% endif %}
+          </div>
+        {% endfor %}
+      {% endif %}
+      {% if f.remediation %}<h5>{{ L.remediation }}</h5><div class="rt-block">{{ f.remediation|richtext }}</div>{% endif %}
+      {% if f.refs %}<h5>{{ L.references }}</h5>{{ f.refs|reference_list }}{% endif %}
+      {% if show_finding_history and f.history %}
+        <h5>{{ L.finding_history }}</h5>
+        <table class="tbl history">
+          <tbody>{% for h in f.history %}<tr><td class="mono nowrap">{{ h.date or '' }}</td>{% if f.history_has_author %}<td class="nowrap">{{ h.author }}</td>{% endif %}<td>{{ h.text }}</td></tr>{% endfor %}</tbody>
+        </table>
+      {% endif %}
+    </article>
+{% endmacro %}
+
+{# numbering of sections and their subsections, like the PDF #}
+{% set num = namespace(sec=0, sub=0) %}
+{% set headings = [] %}
+{% for sec in sections %}
+  {% if sec.numbered %}{% if sec.level == 1 %}{% set num.sec = num.sec + 1 %}{% set num.sub = 0 %}{% else %}{% set num.sub = num.sub + 1 %}{% endif %}{% endif %}
+  {% set _ = headings.append((sec, (num.sec ~ ('.' ~ num.sub if sec.level == 2 else '')) if sec.numbered else '')) %}
+{% endfor %}
+
+<nav class="toc">
+  <h2>{{ L.toc }}</h2>
+  <ol class="toc-list">
+    {% for sec, number in headings %}
+      <li class="toc-l{{ sec.level }}"><a href="#s-{{ loop.index }}">{% if number %}<span class="toc-num">{{ number }}</span>{% endif %}{{ sec.title }}</a></li>
+    {% endfor %}
+  </ol>
+  {% if fingerprint %}<p class="fingerprint"><span>{{ L.fingerprint }}:</span> <span class="mono">{{ fingerprint }}</span></p>{% endif %}
+</nav>
+
+{% for sec, number in headings %}
+<section id="s-{{ loop.index }}" class="section{% if sec.new_page %} new-page{% endif %} level-{{ sec.level }}">
+  {% if sec.level == 1 %}<h2>{% if number %}<span class="num">{{ number }}</span> {% endif %}{{ sec.title }}</h2>{% else %}<h3>{% if number %}<span class="num">{{ number }}</span> {% endif %}{{ sec.title }}</h3>{% endif %}
+  {% if sec.kind == 'executive_summary' %}{{ report.executive_summary|richtext }}
+  {% elif sec.kind == 'scope' %}
+    {{ report.scope|richtext }}
+    {% if targets %}
+      <h4>{{ L.targets }}</h4>
+      <table class="tbl">
+        <thead><tr><th>{{ L.target }}</th><th>{{ L.type }}</th><th>{{ L.address }}</th><th>{{ L.description }}</th></tr></thead>
+        <tbody>{% for t in targets %}<tr><td><strong>{{ t.name }}</strong></td><td>{{ kinds[t.kind] }}</td><td class="mono break">{{ t.address }}</td><td>{{ t.description }}</td></tr>{% endfor %}</tbody>
+      </table>
+    {% endif %}
+  {% elif sec.kind == 'methodology' %}{{ report.methodology|richtext }}
+  {% elif sec.kind == 'summary' %}{{ severity_bars() }}{{ findings_table() }}
+  {% elif sec.kind == 'findings_table' %}{{ findings_table() }}
+  {% elif sec.kind == 'charts' %}{{ charts() }}
+  {% elif sec.kind == 'retest_summary' %}{{ retest_summary() }}
+  {% elif sec.kind == 'findings' %}
+    {% if not findings %}<p>{{ L.no_findings }}</p>
+    {% elif groups %}
+      {% for g in groups %}
+        <section class="cwe-group">
+          <h3>{{ g.title }}</h3>
+          {{ g.description|richtext }}
+          {% for f in g.findings %}{{ finding(f, grouped=True) }}{% endfor %}
+          {% if g.mitigation %}<h4>{{ L.mitigation }}</h4>{{ g.mitigation|richtext }}{% endif %}
+        </section>
+      {% endfor %}
+    {% else %}
+      {% for f in findings %}{{ finding(f) }}{% endfor %}
+    {% endif %}
+  {% endif %}
+  {{ sec.body|richtext }}
+</section>
+{% endfor %}
+</body>
+</html>

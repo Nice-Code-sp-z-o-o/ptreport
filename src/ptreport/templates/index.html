@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}Reports{% endblock %}
+{% block content %}
+<div class="stack-lg">
+  <div class="page-head">
+    <h1>Reports</h1>
+    <div class="cluster">
+      <a class="btn" href="{{ url_for('web.report_import') }}">{{ icon('upload') }}Import JSON</a>
+      <a class="btn btn-primary" href="{{ url_for('web.report_new') }}">{{ icon('plus') }}New report</a>
+    </div>
+  </div>
+  {% if reports %}
+    <div class="table-wrap" tabindex="0" role="region" aria-label="Reports, scrolls sideways">
+      <table class="table" aria-label="Reports">
+        <thead><tr><th scope="col">Title</th><th scope="col">Client</th><th scope="col">Period</th><th scope="col" class="col-num">Targets</th><th scope="col" class="col-num">Findings</th><th scope="col">Updated</th></tr></thead>
+        <tbody>
+          {% for r in reports %}
+            <tr>
+              <td class="col-title"><a href="{{ url_for('web.report_detail', report_id=r.id) }}">{{ r.title }}</a></td>
+              <td>{{ r.client_name }}</td>
+              <td class="nowrap mono small">{{ r.start_date or '' }}{% if r.end_date %} – {{ r.end_date }}{% endif %}</td>
+              <td class="col-num">{{ r.target_count }}</td>
+              <td class="col-num">{{ r.finding_count }}</td>
+              <td class="muted nowrap">{{ r.updated_at }} UTC</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="empty">
+      {{ icon('list') }}
+      <h2>No reports yet</h2>
+      <p>Create a report for your engagement, add targets, then document each vulnerability with CVSS, CWE and PoC.</p>
+      <a class="btn btn-primary" href="{{ url_for('web.report_new') }}">{{ icon('plus') }}Create your first report</a>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

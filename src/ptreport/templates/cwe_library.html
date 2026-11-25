@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, crumbs %}
+{% set section = 'settings' %}
+{% block title %}CWE library{% endblock %}
+{% block content %}
+<div class="stack-lg">
+  {{ crumbs([('Settings', url_for('web.settings'), False), ('CWE library', None, False)]) }}
+  <h1>CWE library</h1>
+  <section class="panel stack">
+    <p class="prose">All {{ total }} MITRE CWE {{ version }} weaknesses ship with ptreport. Write your own description and mitigation for the CWEs you report; reports grouped by CWE use them, and a report can still override them for one group.</p>
+    <form method="get" action="{{ url_for('web.cwe_library') }}" class="cluster" role="search">
+      <label class="visually-hidden" for="f-q">Search CWE</label>
+      <input class="input" id="f-q" name="q" value="{{ q }}" placeholder="79, CWE-89, injection, cookie ..." maxlength="100">
+      <button class="btn btn-primary" type="submit">{{ icon('search') }}Search</button>
+    </form>
+    <form method="post" action="{{ url_for('web.cwe_library_settings') }}" class="cluster">
+      <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+      <input type="hidden" name="use_mitre" value="0">
+      <label class="check check-inline"><input type="checkbox" name="use_mitre" value="1"{% if use_mitre %} checked{% endif %}><span class="check-text">Use MITRE's description and mitigation when you have not written your own</span></label>
+      <button class="btn btn-sm" type="submit">Save</button>
+    </form>
+  </section>
+
+  {% if q %}
+  <section class="panel stack" aria-labelledby="res-h">
+    <h2 id="res-h">Results <span class="muted">({{ results|length }})</span></h2>
+    {% if results %}
+      <ul class="history-list">
+        {% for cwe, name in results %}
+          <li class="history-row"><div class="history-main"><a class="mono" href="{{ url_for('web.cwe_library_entry', number=cwe[4:]|int) }}">{{ cwe }}</a><span>{{ name }}</span>{% if cwe in own %}<span class="chip">own text</span>{% endif %}</div><span></span><span></span></li>
+        {% endfor %}
+      </ul>
+    {% else %}<p class="muted">Nothing found.</p>{% endif %}
+  </section>
+  {% endif %}
+
+  <section class="panel stack" aria-labelledby="own-h">
+    <h2 id="own-h">Your entries <span class="muted">({{ own_rows|length }})</span></h2>
+    {% if own_rows %}
+      <ul class="history-list">
+        {% for cwe, name in own_rows %}
+          <li class="history-row"><div class="history-main"><a class="mono" href="{{ url_for('web.cwe_library_entry', number=cwe[4:]|int) }}">{{ cwe }}</a><span>{{ name }}</span></div><span></span><span></span></li>
+        {% endfor %}
+      </ul>
+    {% else %}<p class="muted">None yet. Search for a CWE and write your own text.</p>{% endif %}
+  </section>
+</div>
+{% endblock %}

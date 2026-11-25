@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, crumbs, severity_badge, post_button %}
+{% block title %}Finding templates{% endblock %}
+{% block content %}
+<div class="stack-lg">
+  <div class="page-head">
+    <div class="stack">
+      <h1>Finding templates</h1>
+      <p class="muted">Reusable write-ups: start a finding from one, then fill in what is specific to the target.</p>
+    </div>
+    <div class="cluster">
+      <a class="btn" href="{{ url_for('web.templates_export') }}">{{ icon('download') }}Export JSON</a>
+      <a class="btn btn-primary" href="{{ url_for('web.template_new') }}">{{ icon('plus') }}New template</a>
+    </div>
+  </div>
+
+  <section class="panel stack">
+    <form method="get" action="{{ url_for('web.templates_list') }}" class="cluster" role="search">
+      <label class="visually-hidden" for="f-q">Search templates</label>
+      <input class="input" id="f-q" name="q" value="{{ query }}" placeholder="Title, tag or CWE (xss, CWE-89 ...)" maxlength="100">
+      <div class="segmented" role="radiogroup" aria-label="Language">
+        {% for code, label in [('', 'All'), ('en', 'English'), ('pl', 'Polski')] %}
+          <label class="seg"><input type="radio" name="language" value="{{ code }}"{% if language == code %} checked{% endif %}><span>{{ label }}</span></label>
+        {% endfor %}
+      </div>
+      <button class="btn btn-primary" type="submit">{{ icon('search') }}Search</button>
+    </form>
+  </section>
+
+  {% if templates %}
+    <div class="table-wrap" tabindex="0" role="region" aria-label="Finding templates, scrolls sideways">
+      <table class="table">
+        <thead><tr><th scope="col">Title</th><th scope="col">Lang</th><th scope="col">Severity</th><th scope="col">CWE</th><th scope="col">Tags</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
+        <tbody>
+          {% for t in templates %}
+            <tr>
+              <td class="col-title"><a href="{{ url_for('web.template_edit', template_id=t.id) }}">{{ t.title }}</a></td>
+              <td><span class="chip mono">{{ t.language|upper }}</span></td>
+              <td>{{ severity_badge(t.severity) }}</td>
+              <td class="col-cwe">{% if t.cwe %}<span title="{{ t.cwe|cwe_name }}">{{ t.cwe }}</span>{% endif %}</td>
+              <td>{% if t.tags %}<div class="chips">{% for tag in t.tags.split(',') if tag.strip() %}<span class="chip">{{ tag.strip() }}</span>{% endfor %}</div>{% endif %}</td>
+              <td class="nowrap">{{ post_button(url_for('web.template_delete', template_id=t.id), 'Delete', 'btn btn-sm btn-danger', 'Delete the template "' ~ t.title ~ '"? Findings created from it are not affected.', icon_name='trash') }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="empty">
+      {{ icon('list') }}
+      <h3>{% if query or language %}No templates match{% else %}No templates yet{% endif %}</h3>
+      <p>Create one here, or open a finding and use "Save as template".</p>
+    </div>
+  {% endif %}
+
+  <section class="panel stack" aria-labelledby="imp-h">
+    <h2 id="imp-h">Import templates</h2>
+    <p class="hint">A JSON file exported from ptreport ("Export JSON" above). Templates are added to the library; existing ones are kept.</p>
+    <form method="post" action="{{ url_for('web.templates_import') }}" enctype="multipart/form-data" class="cluster">
+      <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+      <label class="visually-hidden" for="f-tpl-file">Template library file</label>
+      <input class="file-input" id="f-tpl-file" type="file" name="file" accept="application/json,.json" required>
+      <button class="btn" type="submit">{{ icon('upload') }}Import</button>
+    </form>
+  </section>
+</div>
+{% endblock %}

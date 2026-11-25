@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Evidence and code - ptreport design system</title>
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="components.css">
+<link rel="icon" href="data:,">
+</head>
+<body>
+<svg class="visually-hidden" aria-hidden="true" focusable="false"><defs><symbol id="i-chevron-left" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></symbol><symbol id="i-arrow-up" viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></symbol><symbol id="i-arrow-down" viewBox="0 0 24 24"><path d="M12 5v14M6 13l6 6 6-6"/></symbol><symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol><symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol><symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol><symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol><symbol id="i-chevron-right" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol><symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/></symbol><symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/></symbol><symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11M7 11l5 5 5-5M5 20h14"/></symbol><symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V5M7 9l5-5 5 5M5 20h14"/></symbol><symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.2v.1"/></symbol><symbol id="i-check-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/></symbol><symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5M12 8v.1"/></symbol><symbol id="i-external" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5H5V6h5"/></symbol><symbol id="i-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/></symbol><symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 4.5-3.2 7.6-8 9-4.8-1.4-8-4.5-8-9V6z"/></symbol><symbol id="i-slash-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M6 18L18 6"/></symbol><symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20l1-4L16 5l3 3L8 19zM14 7l3 3"/></symbol><symbol id="i-spinner" viewBox="0 0 24 24"><path d="M12 3.5a8.5 8.5 0 1 0 8.5 8.5"/></symbol><symbol id="i-file" viewBox="0 0 24 24"><path d="M7 3h7l4 4v14H7zM14 3v4h4"/></symbol><symbol id="i-list" viewBox="0 0 24 24"><path d="M5 7h14M5 12h14M5 17h14"/></symbol><symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 6h6l2 2h10v11H3z"/></symbol></defs></svg>
+<header class="topbar"><a class="brand" href="index.html">ptreport</a><nav aria-label="Design system"><a class="nav-link" href="index.html">Overview</a><a class="nav-link" href="components.html">All on one page</a></nav></header>
+<main class="container">
+<nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="index.html">Design system</a><svg class="icon" aria-hidden="true"><use href="#i-chevron-right"/></svg></li><li aria-current="page">Evidence and code</li></ol></nav>
+<nav class="ds-toc" aria-label="Component groups"><a href="foundations.html">Foundations</a><a href="actions.html">Actions</a><a href="form.html">Form</a><a href="cvss.html">CVSS</a><a href="navigation.html">Navigation</a><a href="overlays.html">Overlays</a><a href="content.html">Content</a><a href="evidence.html" aria-current="page">Evidence and code</a><a href="feedback.html">Feedback</a><a href="report-document.html">Report document (light palette)</a></nav>
+<section class="ds-section ds-page" id="evidence" data-section="evidence" data-section-label="Evidence and code" aria-labelledby="evidence-h"><h1 id="evidence-h">Evidence and code</h1>
+<div class="ds-block"><h2>HTTP evidence pair</h2>
+<article class="evidence"><div class="evidence-head"><div class="evidence-title"><h2>Boolean-based payload</h2><span class="chip pill-src">manual</span></div><button class="btn btn-sm btn-danger" type="button"><svg class="icon" aria-hidden="true"><use href="#i-trash"/></svg>Delete</button></div>
+<div class="http-pair"><div class="http-pane"><h3>Request</h3><pre class="http" tabindex="0" aria-label="Raw request"><span class="http-start">GET /api/v2/orders?id=1%20AND%201=1 HTTP/1.1</span>
+<span class="http-h">Host:</span> api.acme.example
+<span class="http-h">Authorization:</span> Bearer eyJ...
+
+</pre></div>
+<div class="http-pane"><h3>Response</h3><pre class="http" tabindex="0" aria-label="Raw response"><span class="http-start">HTTP/1.1 200 OK</span>
+<span class="http-h">Content-Type:</span> application/json
+
+[{&quot;id&quot;:1,&quot;total&quot;:129.99}]</pre></div></div></article></div>
+<div class="ds-block"><h2>Code block</h2><pre class="code" tabindex="0" aria-label="sqlmap command"><code>sqlmap -u &#x27;https://api.acme.example/v2/orders?id=1&#x27; --batch --dbs</code></pre>
+<p class="ds-note">Inline code: <code>id</code>. Blocks scroll in both directions and never wrap; long lines stay one line.</p></div>
+</section>
+<nav class="ds-pager" aria-label="Previous and next group"><a class="btn btn-secondary ds-pager-prev" href="content.html"><svg class="icon" aria-hidden="true"><use href="#i-chevron-left"/></svg>Content</a><a class="btn btn-secondary ds-pager-next" href="feedback.html">Feedback<svg class="icon" aria-hidden="true"><use href="#i-chevron-right"/></svg></a></nav>
+</main>
+<footer class="footer">Hanken Grotesk and JetBrains Mono, self-hosted, SIL OFL 1.1</footer>
+<script src="components.js"></script>
+</body>
+</html>

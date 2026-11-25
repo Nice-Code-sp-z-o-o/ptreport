@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}Error{% endblock %}
+{% block content %}
+<div class="stack-lg narrow">
+  {% if error %}
+    <h1>{{ error.code }} · {{ error.name }}</h1>
+    <p class="prose">{{ error.description }}</p>
+  {% else %}
+    <h1>Something went wrong</h1>
+    <p class="prose">An unexpected error occurred. Details were written to the terminal running ptreport.</p>
+  {% endif %}
+  <div class="cluster"><a class="btn" href="{{ url_for('web.index') }}">Back to reports</a></div>
+</div>
+{% endblock %}

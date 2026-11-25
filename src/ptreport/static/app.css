@@ -1,0 +1,75 @@
+[hidden] { display: none !important; }
+/* App-layout rules that are not part of the design system (components.css). */
+.stack-lg { grid-template-columns: minmax(0, 1fr); }
+.narrow { max-width: 40rem; }
+.prose { max-width: var(--measure); }
+.break { overflow-wrap: anywhere; }
+.page-head h1 { overflow-wrap: anywhere; min-width: 0; }
+.page-head > .stack { min-width: 0; flex: 1 1 20rem; }
+
+/* Settings: token input with its buttons */
+.token-row { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; max-width: var(--measure); }
+.token-row .input { flex: 1 1 16rem; width: auto; }
+
+/* Finding editor: sticky save bar */
+.save-bar { position: sticky; bottom: 0; z-index: 5; padding: var(--sp-3) var(--sp-4); background: var(--c-surface); border: 1px solid var(--c-line); border-radius: var(--radius-lg); }
+
+/* Page-level dangerous actions sit in a panel with a danger-coloured edge */
+.panel .evidence + .evidence { padding-top: var(--sp-5); border-top: 1px solid var(--c-line); }
+.vec-summary:empty { display: none; }
+
+/* Toasts: keep the stack from blocking clicks when empty */
+.toast-stack:empty { display: none; }
+.toast-stack .flash { cursor: default; }
+
+
+/* Findings table: let the vector strip and title wrap so the status column stays in view at 1180px */
+.table .col-vec { min-width: 13rem; }
+.table .col-title { min-width: 12rem; }
+.col-actions .cluster { flex-wrap: nowrap; justify-content: flex-end; }
+.table td.break { min-width: 14rem; }
+
+/* Finding editor: own ID beside the title */
+.grid-title { display: grid; grid-template-columns: minmax(0, 11rem) minmax(0, 1fr); gap: var(--sp-4); }
+@media (max-width: 820px) { .grid-title { grid-template-columns: minmax(0, 1fr); } }
+
+/* CVSS column holds a chip (score + rating) */
+.table .col-cvss { white-space: nowrap; }
+
+/* Report version history: version | date | description */
+.grid-version { display: grid; grid-template-columns: minmax(0, 8rem) minmax(0, 11rem) minmax(0, 1fr); gap: var(--sp-4); }
+@media (max-width: 820px) { .grid-version { grid-template-columns: minmax(0, 1fr); } }
+
+legend.label { margin-bottom: var(--sp-2); font-size: var(--fs-sm); font-weight: var(--fw-semibold); }
+
+/* Branding settings */
+.color-row { display: flex; gap: var(--sp-2); align-items: center; }
+.color-swatch { flex: none; width: var(--h-md); height: var(--h-md); padding: 2px; background: var(--c-raised); border: 1px solid var(--c-control-line); border-radius: var(--radius); cursor: pointer; }
+.logo-preview { display: block; max-width: 100%; max-height: 64px; padding: var(--sp-2); background: #fff; border-radius: var(--radius); }
+span.label { display: block; margin-bottom: var(--sp-2); font-size: var(--fs-sm); font-weight: var(--fw-semibold); }
+
+/* Report structure list */
+.structure-list .is-sub .history-main { padding-left: var(--sp-6); }
+.structure-list .is-off .history-main strong { color: var(--c-muted); text-decoration: line-through; }
+
+/* PDF preview dialog */
+.modal.modal-pdf { width: min(1120px, calc(100vw - 2 * var(--sp-4))); height: calc(100vh - 2 * var(--sp-5)); max-height: none; display: none; flex-direction: column; }
+.modal.modal-pdf[open] { display: flex; }
+.modal-pdf-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); padding: var(--sp-3) var(--sp-4); border-bottom: 1px solid var(--c-line); }
+.modal-pdf-head h2 { margin: 0; font-size: var(--fs-md); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.modal-pdf-body { position: relative; flex: 1 1 auto; min-height: 0; background: var(--c-ground); }
+.pdf-frame { display: block; width: 100%; height: 100%; border: 0; background: #fff; }
+.pdf-status { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: var(--sp-3); padding: var(--sp-5); color: var(--c-muted); text-align: center; }
+.pdf-status .icon { width: 20px; height: 20px; animation: spin 900ms linear infinite; }
+.pdf-status.is-error { color: var(--c-danger); }
+.pdf-status.is-error .icon { animation: none; }
+@media (prefers-reduced-motion: reduce) { .pdf-status .icon { animation: none; } }
+
+/* Retest result + template picker */
+.grow { flex: 1 1 18rem; min-width: 0; }
+.retest { display: inline-flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-sm); font-weight: var(--fw-medium); color: var(--rt, var(--c-muted)); white-space: nowrap; }
+.retest::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.retest-fixed { --rt: var(--c-st-fixed); }
+.retest-partially_fixed { --rt: var(--c-sev-medium); }
+.retest-not_fixed { --rt: var(--c-sev-critical); }
+.retest-not_tested { --rt: var(--c-st-false); }

@@ -1,0 +1,79 @@
+<?xml version="1.0"?>
+<!DOCTYPE issues [
+<!ELEMENT issues (issue*)>
+<!ATTLIST issues burpVersion CDATA "">
+<!ATTLIST issues exportTime CDATA "">
+]>
+<issues burpVersion="2024.9.1" exportTime="Mon Nov 18 10:00:00 CET 2026">
+  <issue>
+    <serialNumber>1001</serialNumber>
+    <type>2097920</type>
+    <name>Cross-site scripting (reflected)</name>
+    <host ip="203.0.113.10">https://shop.example.com</host>
+    <path><![CDATA[/search]]></path>
+    <location><![CDATA[/search [q parameter]]]></location>
+    <severity>High</severity>
+    <confidence>Certain</confidence>
+    <issueBackground><![CDATA[<p>Reflected cross-site scripting vulnerabilities arise when data is copied from a request and echoed into the application's immediate response in an unsafe way.</p><script>alert('x')</script>]]></issueBackground>
+    <remediationBackground><![CDATA[<p>In most situations where user-controllable data is copied into application responses:</p><ul><li><b>Input should be validated</b> as strictly as possible.</li><li>User input should be HTML-encoded at any point where it is copied.</li></ul>]]></remediationBackground>
+    <references><![CDATA[<ul><li><a href="https://portswigger.net/web-security/cross-site-scripting/reflected">Web Security Academy: Reflected XSS</a></li></ul>]]></references>
+    <vulnerabilityClassifications><![CDATA[<ul><li><a href="https://cwe.mitre.org/data/definitions/79.html">CWE-79: Improper Neutralization of Input During Web Page Generation</a></li><li><a href="https://cwe.mitre.org/data/definitions/116.html">CWE-116: Improper Encoding</a></li></ul>]]></vulnerabilityClassifications>
+    <issueDetail><![CDATA[The value of the <b>q</b> request parameter is copied into the HTML document as plain text between tags. The payload <code>&lt;script&gt;alert(1)&lt;/script&gt;</code> was submitted.]]></issueDetail>
+    <requestresponse>
+      <request method="GET" base64="true"><![CDATA[R0VUIC9zZWFyY2g/cT0lM0NzY3JpcHQlM0UgSFRUUC8xLjENCkhvc3Q6IHNob3AuZXhhbXBsZS5jb20NCkNvb2tpZTogcz0xDQoNCg==]]></request>
+      <response base64="true"><![CDATA[SFRUUC8xLjEgMjAwIE9LDQpDb250ZW50LVR5cGU6IHRleHQvaHRtbA0KDQo8aHRtbD48Ym9keT5SZXN1bHRzIGZvciA8c2NyaXB0PmFsZXJ0KDEpPC9zY3JpcHQ+PC9ib2R5PjwvaHRtbD4=]]></response>
+      <responseRedirected>false</responseRedirected>
+    </requestresponse>
+  </issue>
+  <issue>
+    <serialNumber>1002</serialNumber>
+    <type>2097920</type>
+    <name>Cross-site scripting (reflected)</name>
+    <host ip="203.0.113.20">https://admin.example.com</host>
+    <path><![CDATA[/users]]></path>
+    <location><![CDATA[/users [filter parameter]]]></location>
+    <severity>High</severity>
+    <confidence>Firm</confidence>
+    <issueBackground><![CDATA[<p>Reflected cross-site scripting vulnerabilities arise when data is copied from a request and echoed into the application's immediate response in an unsafe way.</p>]]></issueBackground>
+    <remediationBackground><![CDATA[<p>In most situations where user-controllable data is copied into application responses:</p>]]></remediationBackground>
+    <vulnerabilityClassifications><![CDATA[<ul><li><a href="https://cwe.mitre.org/data/definitions/79.html">CWE-79: Improper Neutralization</a></li></ul>]]></vulnerabilityClassifications>
+    <issueDetail><![CDATA[The value of the <b>filter</b> request parameter is copied into a JavaScript string.]]></issueDetail>
+    <requestresponse>
+      <request method="GET" base64="false"><![CDATA[GET /users?filter=a%22%3Balert(1)// HTTP/1.1
+Host: admin.example.com
+
+]]></request>
+      <response base64="false"><![CDATA[HTTP/1.1 200 OK
+Content-Type: text/html
+
+<script>var f="a";alert(1)//";</script>]]></response>
+      <responseRedirected>false</responseRedirected>
+    </requestresponse>
+  </issue>
+  <issue>
+    <serialNumber>1003</serialNumber>
+    <type>5245344</type>
+    <name>Strict transport security not enforced</name>
+    <host ip="203.0.113.10">https://shop.example.com</host>
+    <path><![CDATA[/]]></path>
+    <location><![CDATA[/]]></location>
+    <severity>Low</severity>
+    <confidence>Tentative</confidence>
+    <issueBackground><![CDATA[<p>The application fails to prevent users from connecting to it over unencrypted connections.</p>]]></issueBackground>
+    <remediationBackground><![CDATA[<p>Add the Strict-Transport-Security header.</p>]]></remediationBackground>
+    <references><![CDATA[<ul><li><a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security">HSTS</a></li></ul>]]></references>
+    <vulnerabilityClassifications><![CDATA[<ul><li><a href="https://cwe.mitre.org/data/definitions/523.html">CWE-523: Unprotected Transport of Credentials</a></li></ul>]]></vulnerabilityClassifications>
+  </issue>
+  <issue>
+    <serialNumber>1004</serialNumber>
+    <type>6291968</type>
+    <name>Email addresses disclosed</name>
+    <host ip="203.0.113.10">https://shop.example.com</host>
+    <path><![CDATA[/contact]]></path>
+    <location><![CDATA[/contact]]></location>
+    <severity>Information</severity>
+    <confidence>Certain</confidence>
+    <issueBackground><![CDATA[<p>The presence of email addresses within application responses does not necessarily constitute a security vulnerability.</p>]]></issueBackground>
+    <issueDetail><![CDATA[The following email address was disclosed: <b>sales@example.com</b>]]></issueDetail>
+  </issue>
+</issues>

@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon %}
+{% set section = 'import' %}
+{% block title %}Import{% endblock %}
+{% block content %}
+<div class="stack-lg narrow">
+  <h1>Import report</h1>
+  <p class="prose">Import a <code>.json</code> file exported from ptreport. It is created as a new report; nothing existing is overwritten.</p>
+  {% if errors %}
+    <div class="flash flash-error" role="alert">
+      {{ icon('alert') }}
+      <div class="flash-body"><strong>Import failed:</strong>
+        <ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul>
+      </div>
+    </div>
+  {% endif %}
+  <form method="post" enctype="multipart/form-data" class="panel stack-lg">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <div class="field"><label for="f-file">Export file</label><input class="file-input" id="f-file" type="file" name="file" accept=".json,application/json" required></div>
+    <div class="cluster"><button class="btn btn-primary" type="submit">{{ icon('upload') }}Import</button></div>
+  </form>
+</div>
+{% endblock %}

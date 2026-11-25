@@ -1,0 +1,119 @@
+{% macro icon(name) -%}
+  <svg class="icon" aria-hidden="true"><use href="#i-{{ name }}"/></svg>
+{%- endmacro %}
+
+{% macro field_error(errors, name, prefix="") -%}
+  {% if errors.get(name) %}<p class="field-error" id="{{ prefix }}{{ name }}-error">{{ icon('alert') }}<span>{{ errors[name] }}</span></p>{% endif %}
+{%- endmacro %}
+
+{% macro input(name, label, values, errors, type="text", required=False, maxlength=None, pattern=None, title=None, placeholder=None, hint=None, list=None, extra_class="", prefix="", mono=False) -%}
+  <div class="field {{ extra_class }}">
+    <label for="f-{{ prefix }}{{ name }}">{{ label }}{% if required %} <span class="req" aria-hidden="true">*</span>{% endif %}</label>
+    <input class="input{% if mono %} is-mono{% endif %}" id="f-{{ prefix }}{{ name }}" name="{{ name }}" type="{{ type }}" value="{{ values.get(name) or '' }}"
+      {%- if required %} required{% endif %}
+      {%- if maxlength %} maxlength="{{ maxlength }}"{% endif %}
+      {%- if pattern %} pattern="{{ pattern }}"{% endif %}
+      {%- if title %} title="{{ title }}"{% endif %}
+      {%- if placeholder %} placeholder="{{ placeholder }}"{% endif %}
+      {%- if list %} list="{{ list }}" autocomplete="off"{% endif %}
+      {%- if errors.get(name) %} aria-invalid="true" aria-describedby="{{ prefix }}{{ name }}-error"{% endif %}>
+    {% if hint %}<p class="hint">{{ hint }}</p>{% endif %}
+    {{ field_error(errors, name, prefix) }}
+  </div>
+{%- endmacro %}
+
+{% macro textarea(name, label, values, errors, rows=6, required=False, hint=None, mono=False, maxlength=200000, prefix="") -%}
+  <div class="field">
+    <label for="f-{{ prefix }}{{ name }}">{{ label }}{% if required %} <span class="req" aria-hidden="true">*</span>{% endif %}</label>
+    <textarea class="textarea{% if mono %} is-mono{% endif %}" id="f-{{ prefix }}{{ name }}" name="{{ name }}" rows="{{ rows }}" maxlength="{{ maxlength }}"
+      {%- if required %} required{% endif %}
+      {%- if errors.get(name) %} aria-invalid="true" aria-describedby="{{ prefix }}{{ name }}-error"{% endif %}>{{ values.get(name) or '' }}</textarea>
+    {% if hint %}<p class="hint">{{ hint }}</p>{% endif %}
+    {{ field_error(errors, name, prefix) }}
+  </div>
+{%- endmacro %}
+
+{% macro select(name, label, values, errors, options, labels=None, required=False, blank=None, prefix="") -%}
+  <div class="field">
+    <label for="f-{{ prefix }}{{ name }}">{{ label }}{% if required %} <span class="req" aria-hidden="true">*</span>{% endif %}</label>
+    <div class="select-wrap">
+      <select class="select" id="f-{{ prefix }}{{ name }}" name="{{ name }}"{% if required %} required{% endif %}
+        {%- if errors.get(name) %} aria-invalid="true" aria-describedby="{{ prefix }}{{ name }}-error"{% endif %}>
+        {% if blank is not none %}<option value="">{{ blank }}</option>{% endif %}
+        {% for opt in options %}
+          <option value="{{ opt }}"{% if values.get(name) == opt %} selected{% endif %}>{{ labels[opt] if labels else opt }}</option>
+        {% endfor %}
+      </select>
+      {{ icon('chevron-down') }}
+    </div>
+    {{ field_error(errors, name, prefix) }}
+  </div>
+{%- endmacro %}
+
+{# Form that POSTs with CSRF. `icon_name` + `aria_label` make an icon-only button. #}
+{% macro post_button(action, label, cls="btn", confirm=None, fields=None, icon_name=None, aria_label=None, disabled=False) -%}
+  <form method="post" action="{{ action }}" class="inline"{% if confirm %} data-confirm="{{ confirm }}"{% endif %}>
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    {% for k, v in (fields or {}).items() %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+    <button type="submit" class="{{ cls }}"{% if aria_label %} aria-label="{{ aria_label }}"{% endif %}{% if disabled %} disabled{% endif %}>{% if icon_name %}{{ icon(icon_name) }}{% endif %}{{ label }}</button>
+  </form>
+{%- endmacro %}
+
+{% macro severity_badge(severity) -%}
+  <span class="sev sev-{{ severity }}">{{ SEVERITY_LABELS['en'][severity] }}</span>
+{%- endmacro %}
+
+{% macro status_label(status) -%}
+  {%- set icons = {'open': 'circle', 'fixed': 'check-circle', 'risk_accepted': 'shield', 'false_positive': 'slash-circle'} -%}
+  <span class="status status-{{ status }}">{{ icon(icons.get(status, 'circle')) }}<span>{{ STATUS_LABELS['en'][status] }}</span></span>
+{%- endmacro %}
+
+{# CVSS vector strip (signature). Compact in tables, `large` in the calculator summary. #}
+{% macro vector_strip(vector, large=False) -%}
+  {%- set groups = vector|vector_strip -%}
+  {%- if groups -%}
+  <ul class="vec{% if large %} vec-lg{% endif %}" aria-label="{{ vector }}">
+    {%- for g in groups %}
+    <li class="vec-group"><span class="vec-group-name">{{ g.name }}</span><ul class="vec-cells">
+      {%- for c in g.cells %}<li class="vec-cell" data-level="{{ c.tone }}" title="{{ c.name }}: {{ c.value_name }}"><span class="vec-k">{{ c.key }}</span><span class="vec-v">{{ c.value_name if large else c.value }}</span></li>{% endfor -%}
+    </ul></li>
+    {%- endfor %}
+  </ul>
+  {%- endif -%}
+{%- endmacro %}
+
+{# Severity summary bar: SVG segments (no inline style) and a legend with counts. #}
+{% macro severity_bar(counts, severities, total, small=False) -%}
+  {%- set ns = namespace(x=0, parts=[]) -%}
+  {%- for s in severities if counts[s] -%}
+    {%- set ns.parts = ns.parts + [SEVERITY_LABELS['en'][s] ~ ' ' ~ counts[s]] -%}
+  {%- endfor -%}
+  <svg class="sev-bar-svg" viewBox="0 0 100 12" preserveAspectRatio="none" role="img" aria-label="{{ 'Findings by severity: ' ~ ns.parts|join(', ') if ns.parts else 'No findings' }}">
+    {%- for s in severities if counts[s] %}{% set w = 100 * counts[s] / total %}<rect class="seg-{{ s }}" x="{{ '%.2f'|format(ns.x) }}" y="0" width="{{ '%.2f'|format(w) }}" height="12"/>{% set ns.x = ns.x + w %}{% endfor -%}
+  </svg>
+{%- endmacro %}
+
+{% macro flash(kind, message) -%}
+  <div class="flash flash-{{ kind }}" role="{{ 'alert' if kind == 'error' else 'status' }}">
+    {{ icon('alert' if kind == 'error' else 'check-circle') }}
+    <div class="flash-body"><span>{{ message }}</span></div>
+  </div>
+{%- endmacro %}
+
+{# items: list of (label, url or None, is_mono); last item is the current page. #}
+{% macro crumbs(items) -%}
+  <nav class="crumbs" aria-label="Breadcrumb"><ol>
+    {%- for label, url, mono in items %}
+      <li>{% if loop.last %}<span{% if mono %} class="mono"{% endif %} aria-current="page">{{ label }}</span>{% else %}<a href="{{ url }}">{{ label }}</a>{{ icon('chevron-right') }}{% endif %}</li>
+    {%- endfor %}
+  </ol></nav>
+{%- endmacro %}
+
+{# The calculated CVSS score coloured by its own rating; separate from the tester's severity badge. #}
+{% macro cvss_chip(finding, lang='en', large=False) -%}
+  {%- if finding.cvss_score is not none -%}
+  <span class="cvss-chip cv-{{ finding|cvss_rating_key }}{% if large %} cvss-chip-lg{% endif %}" title="CVSS {{ finding.cvss_version }} score and rating">
+    <span class="cvss-chip-score">{{ '%.1f'|format(finding.cvss_score) }}</span><span class="cvss-chip-rating">{{ finding|cvss_rating_label(lang) }}</span>
+  </span>
+  {%- endif -%}
+{%- endmacro %}

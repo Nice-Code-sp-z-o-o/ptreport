@@ -111,6 +111,12 @@
   <section class="panel stack" aria-labelledby="api-h">
     <h2 id="api-h">API access (Burp extension)</h2>
     <p class="prose">The Burp extension talks to <code>{{ api_base }}</code> and authenticates with this bearer token.</p>
+    <ol class="prose steps">
+      <li><a href="{{ url_for('web.burp_extension_download') }}" download>Download the Burp extension</a> (<code>ptreport-burp.jar</code>, Burp 2023+ with Java 17).</li>
+      <li>In Burp: <em>Extensions → Installed → Add</em>, type <em>Java</em>, select the file.</li>
+      <li>Open the <em>ptreport</em> tab in Burp, paste the token below and click <em>Test connection</em>.</li>
+      <li>Right-click any request or response and choose <em>Send to ptreport</em>.</li>
+    </ol>
     <div class="token-row">
       <input id="api-token" class="input is-mono" type="password" value="{{ api_token }}" readonly aria-label="API token" autocomplete="off">
       <button class="btn" type="button" data-toggle-secret="api-token">Show</button>

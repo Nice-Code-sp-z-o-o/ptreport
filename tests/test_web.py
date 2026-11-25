@@ -245,3 +245,17 @@ def test_cvss_versions_only_in_column_header(client, make_report, make_finding):
     assert ">v3.1<" not in page and ">v4.0<" not in page
     html = client.get(f"/reports/{report_id}/export/html").get_data(as_text=True)
     assert "<th>CVSS 4.0 / 3.1</th>" in html
+
+
+def test_burp_extension_download(client):
+    page = client.get("/").get_data(as_text=True)
+    assert "/downloads/ptreport-burp.jar" in page and "Burp extension" in page
+    assert "/downloads/ptreport-burp.jar" in client.get("/settings").get_data(as_text=True)
+    resp = client.get("/downloads/ptreport-burp.jar")
+    assert resp.status_code == 200 and resp.mimetype == "application/java-archive"
+    assert "attachment" in resp.headers["Content-Disposition"]
+    assert resp.data[:2] == b"PK"  # a zip/jar
+    import zipfile
+    from io import BytesIO
+    names = zipfile.ZipFile(BytesIO(resp.data)).namelist()
+    assert "ptreport/burp/PtreportExtension.class" in names

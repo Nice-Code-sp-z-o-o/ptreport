@@ -26,4 +26,6 @@ fi
 rm -rf build/classes && mkdir -p build/classes
 javac --release 17 -Xlint:all,-serial -Werror -encoding UTF-8 -cp "$LIB" -d build/classes $(find src/main/java -name '*.java')
 jar --create --file dist/ptreport-burp.jar -C build/classes .
-echo "Built $(pwd)/dist/ptreport-burp.jar"
+# ptreport serves this copy from its home page ("Burp extension" button)
+cp dist/ptreport-burp.jar ../src/ptreport/data/ptreport-burp.jar
+echo "Built $(pwd)/dist/ptreport-burp.jar (copied to src/ptreport/data/ for the download button)"

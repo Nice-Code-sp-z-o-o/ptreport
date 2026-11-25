@@ -15,6 +15,7 @@ from ptreport.validation import (
     validate_attachment,
     validate_evidence,
     validate_finding,
+    validate_note,
     validate_target,
 )
 
@@ -181,3 +182,20 @@ def templates():
     rows = repo.list_templates(get_db(), request.args.get("q", "").strip()[:100],
                                language if language in ("en", "pl") else "")
     return jsonify(templates=rows)
+
+
+@bp.get("/reports/<int:report_id>/notes")
+def notes(report_id: int):
+    _report(report_id)
+    return jsonify(notes=repo.list_notes(get_db(), report_id, request.args.get("q", "").strip()[:100]))
+
+
+@bp.post("/reports/<int:report_id>/notes")
+def note_create(report_id: int):
+    """Add a working note: {"title": "...", "body": "...", "pinned": false}."""
+    _report(report_id)
+    data, errors = validate_note(_json_body())
+    if errors:
+        return _unprocessable(errors)
+    note_id = repo.create_note(get_db(), report_id, data)
+    return jsonify(note=repo.get_note(get_db(), note_id)), 201

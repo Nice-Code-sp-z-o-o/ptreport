@@ -224,6 +224,19 @@ MIGRATIONS: list[str] = [
     );
     CREATE INDEX idx_scan_imports_report ON scan_imports(report_id);
     """,
+    # 11: working notes per report (never part of the report itself)
+    """
+    CREATE TABLE report_notes (
+        id         INTEGER PRIMARY KEY,
+        report_id  INTEGER NOT NULL REFERENCES reports(id) ON DELETE CASCADE,
+        title      TEXT    NOT NULL,
+        body       TEXT    NOT NULL DEFAULT '',
+        pinned     INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT    NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT    NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX idx_report_notes_report ON report_notes(report_id, pinned, updated_at);
+    """,
 ]
 
 

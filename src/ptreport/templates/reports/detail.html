@@ -32,6 +32,7 @@
       </p>
     </div>
     <div class="cluster">
+      <a class="btn" href="{{ url_for('web.notes', report_id=report.id) }}">{{ icon('note') }}Notes{% if note_count %} <span class="tab-count">{{ note_count }}</span>{% endif %}</a>
       <a class="btn" href="{{ url_for('web.report_edit', report_id=report.id) }}">{{ icon('edit') }}Edit details</a>
       <a class="btn" href="{{ url_for('web.report_preview', report_id=report.id) }}" target="_blank" rel="noopener" data-pdf-preview>{{ icon('external') }}Preview PDF<span class="visually-hidden"> (opens a new tab)</span></a>
       <details class="dropdown">

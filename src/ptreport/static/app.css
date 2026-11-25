@@ -73,3 +73,28 @@ span.label { display: block; margin-bottom: var(--sp-2); font-size: var(--fs-sm)
 .retest-partially_fixed { --rt: var(--c-sev-medium); }
 .retest-not_fixed { --rt: var(--c-sev-critical); }
 .retest-not_tested { --rt: var(--c-st-false); }
+
+/* Report notes */
+.notes-layout { display: grid; grid-template-columns: minmax(0, 20rem) minmax(0, 1fr); gap: var(--sp-5); align-items: start; }
+@media (max-width: 960px) { .notes-layout { grid-template-columns: minmax(0, 1fr); } }
+.note-list { display: grid; gap: var(--sp-1); margin: 0; padding: 0; list-style: none; }
+.note-item { display: grid; gap: 2px; padding: var(--sp-2) var(--sp-3); color: var(--c-text); text-decoration: none; border: 1px solid transparent; border-radius: var(--radius); }
+.note-item:is(:hover, .is-hover) { background: var(--c-raised); }
+.note-item:focus-visible { box-shadow: var(--focus-ring); }
+.note-item.is-current { background: var(--c-raised); border-color: var(--c-line); box-shadow: inset 2px 0 0 var(--c-accent); }
+.note-item-title { display: flex; align-items: center; gap: var(--sp-2); font-weight: var(--fw-semibold); overflow-wrap: anywhere; }
+.note-item-title .icon { width: 14px; height: 14px; flex: none; color: var(--c-accent); }
+.note-item-meta { font-size: var(--fs-xs); color: var(--c-muted); }
+.note-item-excerpt { font-size: var(--fs-sm); color: var(--c-muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.note-view { max-width: var(--measure); padding: var(--sp-4); background: var(--c-ground); border: 1px solid var(--c-line); border-radius: var(--radius); overflow-wrap: anywhere; }
+.note-view > * + * { margin-top: var(--sp-3); }
+.note-view .rt-h { font-size: var(--fs-md); }
+.note-view .rt-list { padding-left: var(--sp-5); }
+.note-view pre { margin: 0; padding: var(--sp-3); overflow: auto; font-family: var(--font-mono); font-size: var(--fs-sm); background: var(--c-surface); border: 1px solid var(--c-line); border-radius: var(--radius); }
+.note-view pre code { padding: 0; background: none; border: 0; }
+.note-view .rt-table-wrap { overflow-x: auto; }
+.note-view .rt-table { border-collapse: collapse; font-size: var(--fs-sm); }
+.note-view .rt-table :is(th, td) { padding: var(--sp-1) var(--sp-3); border: 1px solid var(--c-line); text-align: left; }
+.note-view .rt-table th { background: var(--c-raised); font-weight: var(--fw-semibold); }
+.note-view .rt-table .al-center { text-align: center; } .note-view .rt-table .al-right { text-align: right; }
+.note-search { display: flex; gap: var(--sp-2); } .note-search .input { flex: 1 1 auto; min-width: 0; }

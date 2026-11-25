@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 from datetime import date
 import json
+import re
 import zipfile
 
 from flask import (
@@ -52,6 +53,7 @@ from ptreport.validation import (
     validate_cwe_note,
     validate_finding,
     validate_history_entry,
+    validate_note,
     validate_report_version,
     validate_section,
     validate_report,
@@ -126,7 +128,7 @@ def report_detail(report_id: int):
     repo.ensure_sections(get_db(), report_id)
     ctx = export.build_context(get_db(), report_id)
     return render_template("reports/detail.html", section_kinds=SECTION_KIND_LABELS, addable_kinds=ADDABLE_KINDS,
-                           retest_mode=_retest_mode(ctx), **ctx)
+                           retest_mode=_retest_mode(ctx), note_count=repo.count_notes(get_db(), report_id), **ctx)
 
 
 @bp.route("/reports/<int:report_id>/edit", methods=["GET", "POST"])
@@ -428,7 +430,8 @@ def report_version_new(report_id: int):
         ctx = export.build_context(get_db(), report_id, inline_images=False)
         return render_template("reports/detail.html", version_values=request.form, version_errors=errors,
                                section_kinds=SECTION_KIND_LABELS, addable_kinds=ADDABLE_KINDS,
-                               retest_mode=_retest_mode(ctx), **ctx), 422
+                               retest_mode=_retest_mode(ctx), note_count=repo.count_notes(get_db(), report_id),
+                               **ctx), 422
     repo.create_report_version(get_db(), report_id, data)
     flash("Version added to the history.", "success")
     return redirect(url_for("web.report_detail", report_id=report_id, _anchor="versions"))
@@ -624,7 +627,10 @@ def report_export(report_id: int, fmt: str, inline: bool = False):
     elif fmt == "md":
         body, mimetype, ext = export.to_markdown(ctx), "text/markdown", "md"
     elif fmt == "json":
-        body = json.dumps(export.to_json(ctx), ensure_ascii=False, indent=2)
+        doc = export.to_json(ctx)
+        # working notes travel with the backup, but are not report content (not in the fingerprint)
+        doc["notes"] = [{f: n[f] for f in repo.NOTE_FIELDS} for n in reversed(repo.list_notes(get_db(), report_id))]
+        body = json.dumps(doc, ensure_ascii=False, indent=2)
         mimetype, ext = "application/json", "json"
     else:
         try:
@@ -1140,3 +1146,85 @@ def scan_import_apply(import_id: int):
     flash(f"Imported {n_findings} finding(s) and {created} new target(s)"
           + (f"; {reused} target(s) already in the report were reused" if reused else "") + ".", "success")
     return redirect(url_for("web.report_detail", report_id=report["id"], _anchor="findings"))
+
+
+# ------------------------------------------------------------------- notes --
+
+def _note_or_404(note_id: int) -> tuple[dict, dict]:
+    note = repo.get_note(get_db(), note_id)
+    if note is None:
+        abort(404)
+    return note, _report_or_404(note["report_id"])
+
+
+_EXCERPT_NOISE = re.compile(r"^\s*(?:#{1,3}\s+|[-*•]\s+|`{3,}.*$|\|?(?:\s*:?-{3,}:?\s*\|)+\s*$)")
+
+
+def _note_excerpt(body: str, limit: int = 140) -> str:
+    """First words of a note without its mark-up, for the list."""
+    words = []
+    for line in body.splitlines():
+        line = _EXCERPT_NOISE.sub("", line)
+        line = line.replace("**", "").replace("`", "").strip(" |")
+        line = re.sub(r"\s*\|\s*", " · ", line)
+        if line:
+            words.append(line)
+        if sum(len(w) for w in words) > limit:
+            break
+    text = " ".join(words)
+    return text if len(text) <= limit else text[:limit].rstrip() + "…"
+
+
+def _notes_page(report: dict, current: dict | None, values: dict, errors: dict, status: int = 200):
+    query = request.args.get("q", "").strip()[:100]
+    notes = repo.list_notes(get_db(), report["id"], query)
+    for n in notes:
+        n["excerpt"] = _note_excerpt(n["body"])
+    return render_template("reports/notes.html", report=report, notes=notes,
+                           total=repo.count_notes(get_db(), report["id"]), current=current, values=values,
+                           errors=errors, query=query), status
+
+
+@bp.get("/reports/<int:report_id>/notes")
+def notes(report_id: int):
+    report = _report_or_404(report_id)
+    note_id = request.args.get("note", "")
+    current = None
+    if note_id.isdigit():
+        current = repo.get_note(get_db(), int(note_id))
+        if current is None or current["report_id"] != report_id:
+            abort(404)
+    elif note_id != "new":
+        first = repo.list_notes(get_db(), report_id)
+        current = first[0] if first else None
+    return _notes_page(report, current, current or {}, {})
+
+
+@bp.post("/reports/<int:report_id>/notes")
+def note_new(report_id: int):
+    report = _report_or_404(report_id)
+    data, errors = validate_note(request.form)
+    if errors:
+        return _notes_page(report, None, request.form, errors, 422)
+    note_id = repo.create_note(get_db(), report_id, data)
+    flash("Note created.", "success")
+    return redirect(url_for("web.notes", report_id=report_id, note=note_id))
+
+
+@bp.post("/notes/<int:note_id>/edit")
+def note_edit(note_id: int):
+    note, report = _note_or_404(note_id)
+    data, errors = validate_note(request.form)
+    if errors:
+        return _notes_page(report, note, request.form, errors, 422)
+    repo.update_note(get_db(), note, data)
+    flash("Note saved.", "success")
+    return redirect(url_for("web.notes", report_id=report["id"], note=note_id))
+
+
+@bp.post("/notes/<int:note_id>/delete")
+def note_delete(note_id: int):
+    note, report = _note_or_404(note_id)
+    repo.delete_note(get_db(), note)
+    flash("Note deleted.", "success")
+    return redirect(url_for("web.notes", report_id=report["id"]))

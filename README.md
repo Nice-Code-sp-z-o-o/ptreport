@@ -26,7 +26,10 @@ one SQLite file, no accounts, no cloud.
 - **Retests**: create a retest report from an existing one, record the retest result, date and notes per finding,
   and get a "Retest summary" section in the report
 - **Tables** in text fields (Markdown pipe tables), rendered in HTML and in the PDF
-- **JSON API** with bearer-token auth, for the upcoming Burp Suite extension
+- **Notes** per report: working notes (raw results, questions, to-dos) with search and pinning; never in the report
+- **Burp Suite extension**: right-click a request or response and send it to a new or existing finding, choosing
+  the title, CWE, severity and target in a dialog
+- **JSON API** with bearer-token auth (used by the Burp extension)
 
 ## Install (one command)
 
@@ -134,6 +137,31 @@ files and loaded with `\VerbatimInput`, so they are never parsed as TeX. Templat
 and LaTeX always runs without shell escape. In **Settings → PDF template** you can download the default,
 upload your own (it is test-rendered before saving) and switch back to the default.
 
+## Burp Suite extension
+
+Right-click any request or response in Burp (Proxy history, Repeater, Target, Logger, Intruder results ...) and
+choose **Send to ptreport**. A dialog asks for:
+
+- the **report** (the last one used is preselected),
+- **New finding** (title, **CWE** with search over the whole MITRE catalogue, severity, target) or **Add to an
+  existing finding**,
+- the evidence title and whether to include the response.
+
+Selecting several requests adds each one as a separate HTTP evidence item. A target matching the request's host is
+preselected, or created from it. Afterwards you can open the finding in ptreport.
+
+**Build and load** (JDK 17+; no Gradle needed):
+
+```bash
+./burp-extension/build.sh          # -> burp-extension/dist/ptreport-burp.jar
+```
+
+In Burp: *Extensions → Installed → Add → Java* and pick `ptreport-burp.jar`. Then open the **ptreport** tab in
+Burp, paste the API token (`ptreport --show-api-token`, or Settings → API in ptreport) and click *Test
+connection*. The build downloads the Montoya API (PortSwigger's official extension API, compile-time only; Burp
+provides it at runtime) from Maven Central and checks its SHA-256. The token is kept in Burp's user settings, not in
+project files.
+
 ## API (for the Burp extension)
 
 Base URL: `http://127.0.0.1:5055/api/v1`, header `Authorization: Bearer <token>`.
@@ -150,6 +178,8 @@ The token is shown under **Settings** and can be regenerated there.
 | POST | `/findings/{id}/evidence` | Attach a raw HTTP request/response |
 | POST | `/findings/{id}/attachments` | Attach a screenshot: `{"caption": "...", "data_base64": "..."}` |
 | GET | `/templates?language=en&q=xss` | Finding template library |
+| GET | `/cwe?q=xss` | MITRE CWE catalogue (`{"id": "CWE-79", "name": ...}`) |
+| GET/POST | `/reports/{id}/notes` | List / add working notes |
 
 ```bash
 TOKEN=$(ptreport --show-api-token)

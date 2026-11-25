@@ -8,6 +8,9 @@ import binascii
 from flask import Blueprint, abort, current_app, jsonify, request, url_for
 
 from ptreport import __version__, repo
+from ptreport.cwe import catalogue_version as cwe_catalogue_version
+from ptreport.cwe import cwe_choices
+from ptreport.cwe import search as cwe_search
 from ptreport.db import get_db
 from ptreport.security import require_api_token
 from ptreport.validation import (
@@ -199,3 +202,11 @@ def note_create(report_id: int):
         return _unprocessable(errors)
     note_id = repo.create_note(get_db(), report_id, data)
     return jsonify(note=repo.get_note(get_db(), note_id)), 201
+
+
+@bp.get("/cwe")
+def cwe_list():
+    """The bundled MITRE CWE catalogue ({"id": "CWE-79", "name": "..."}); ?q= searches number, name, description."""
+    query = request.args.get("q", "").strip()[:100]
+    rows = cwe_search(query) if query else cwe_choices()
+    return jsonify(version=cwe_catalogue_version(), cwe=[{"id": i, "name": n} for i, n in rows])

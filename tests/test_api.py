@@ -77,3 +77,13 @@ def test_api_does_not_need_csrf_but_web_does(client, api_headers, make_report):
     resp = client.post(f"/api/v1/reports/{report_id}/findings", headers=api_headers,
                        json={"title": "No CSRF needed", "severity": "info"})
     assert resp.status_code == 201
+
+
+def test_api_cwe_catalogue(client, api_headers):
+    assert client.get("/api/v1/cwe").status_code == 401
+    doc = client.get("/api/v1/cwe", headers=api_headers).get_json()
+    assert len(doc["cwe"]) > 900 and doc["version"]
+    assert {"id": "CWE-79", "name": doc["cwe"][[c["id"] for c in doc["cwe"]].index("CWE-79")]["name"]} in doc["cwe"]
+    found = client.get("/api/v1/cwe?q=89", headers=api_headers).get_json()["cwe"]
+    assert found[0]["id"] == "CWE-89"
+    assert client.get("/api/v1/cwe?q=zzzzzz", headers=api_headers).get_json()["cwe"] == []

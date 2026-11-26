@@ -11,6 +11,7 @@ import javax.swing.JButton;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JPasswordField;
+import javax.swing.JTextArea;
 import javax.swing.JTextField;
 import javax.swing.SwingWorker;
 
@@ -32,9 +33,22 @@ final class SettingsTab extends JPanel {
         c.insets = new Insets(6, 4, 6, 4);
         c.anchor = GridBagConstraints.WEST;
 
-        JLabel head = new JLabel("<html><h2 style='margin:0'>ptreport</h2>"
-                + "Right-click a request or response anywhere in Burp (Proxy history, Repeater, Target, Logger ...) and choose "
-                + "<b>Send to ptreport</b> to add it as HTTP evidence to a new or existing finding.</html>");
+        JLabel heading = new JLabel("ptreport");
+        heading.setFont(heading.getFont().deriveFont(java.awt.Font.BOLD, heading.getFont().getSize2D() * 1.5f));
+        JTextArea intro = new JTextArea("Right-click a request or response anywhere in Burp (Proxy history, Repeater, "
+                + "Target, Logger ...) and choose \"Send to ptreport ...\" to add it as HTTP evidence to a new or "
+                + "existing finding.", 2, 60);
+        intro.setEditable(false);
+        intro.setFocusable(false);
+        intro.setOpaque(false);
+        intro.setLineWrap(true);
+        intro.setWrapStyleWord(true);
+        intro.setBorder(BorderFactory.createEmptyBorder());
+        intro.setMargin(new Insets(0, 0, 0, 0));
+        intro.setFont(heading.getFont().deriveFont(java.awt.Font.PLAIN, heading.getFont().getSize2D() / 1.5f));
+        JPanel head = new JPanel(new BorderLayout(0, 6));
+        head.add(heading, BorderLayout.NORTH);
+        head.add(intro, BorderLayout.CENTER);
         c.gridx = 0;
         c.gridy = 0;
         c.gridwidth = 2;
@@ -108,9 +122,9 @@ final class SettingsTab extends JPanel {
             @Override
             protected void done() {
                 try {
-                    status.setText("<html>" + SendDialog.esc(get()) + "</html>");
+                    status.setText(SendDialog.plain(get()));
                 } catch (Exception e) {
-                    status.setText(SendDialog.esc(e.getMessage()));
+                    status.setText(SendDialog.plain(String.valueOf(e.getMessage())));
                 }
                 button.setEnabled(true);
             }

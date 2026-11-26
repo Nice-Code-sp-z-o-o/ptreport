@@ -52,6 +52,16 @@ final class SendDialog extends JDialog {
             "CWE-209", "CWE-532", "CWE-601", "CWE-1021", "CWE-693", "CWE-614", "CWE-1004", "CWE-326", "CWE-327",
             "CWE-319", "CWE-521", "CWE-798", "CWE-94", "CWE-502", "CWE-1104", "CWE-942", "CWE-16");
 
+    /** Pentest shorthand that does not appear in CWE names, mapped to the CWE it usually means. */
+    private static final Map<String, String> CWE_ALIASES = Map.ofEntries(
+            Map.entry("xss", "CWE-79"), Map.entry("sqli", "CWE-89"), Map.entry("sql", "CWE-89"),
+            Map.entry("idor", "CWE-639"), Map.entry("bola", "CWE-639"), Map.entry("csrf", "CWE-352"),
+            Map.entry("xsrf", "CWE-352"), Map.entry("ssrf", "CWE-918"), Map.entry("lfi", "CWE-22"),
+            Map.entry("traversal", "CWE-22"), Map.entry("rce", "CWE-78"), Map.entry("cmdi", "CWE-78"),
+            Map.entry("xxe", "CWE-611"), Map.entry("upload", "CWE-434"), Map.entry("redirect", "CWE-601"),
+            Map.entry("clickjacking", "CWE-1021"), Map.entry("deserialization", "CWE-502"),
+            Map.entry("cors", "CWE-942"), Map.entry("ssti", "CWE-1336"), Map.entry("jwt", "CWE-347"));
+
     /** A combo entry: an id with a label. */
     private record Item(long id, String label, Map<String, Object> data) {
         @Override
@@ -71,8 +81,8 @@ final class SendDialog extends JDialog {
     private final JComboBox<Item> existing = new JComboBox<>();
     private final JTextField title = new JTextField(40);
     private final JTextField cweSearch = new JTextField(40);
-    private final DefaultListModel<String[]> cweModel = new DefaultListModel<>();
-    private final JList<String[]> cweList = new JList<>(cweModel);
+    private final DefaultListModel<Cwe> cweModel = new DefaultListModel<>();
+    private final JList<Cwe> cweList = new JList<>(cweModel);
     private final JLabel cweChosen = new JLabel("No CWE selected");
     private final JComboBox<String> severity = new JComboBox<>();
     private final JComboBox<Item> target = new JComboBox<>();
@@ -80,6 +90,7 @@ final class SendDialog extends JDialog {
     private final JCheckBox includeResponse = new JCheckBox("Include the response");
     private final JLabel status = new JLabel(" ");
     private final JButton send = new JButton("Send to ptreport");
+    private static final String LABEL_KEY = "ptreport.label";
     private final List<JComponent> newOnly = new ArrayList<>();
 
     private List<String[]> allCwes = List.of();
@@ -108,9 +119,10 @@ final class SendDialog extends JDialog {
         int row = 0;
 
         Message first = messages.get(0);
-        JLabel summary = new JLabel(messages.size() == 1
-                ? "<html><b>" + esc(first.defaultTitle()) + "</b> &nbsp;" + esc(first.origin()) + "</html>"
-                : "<html><b>" + messages.size() + " requests</b> will be added as HTTP evidence</html>");
+        JLabel summary = new JLabel(plain(messages.size() == 1
+                ? first.defaultTitle() + "   " + first.origin()
+                : messages.size() + " requests will be added as HTTP evidence"));
+        summary.setFont(summary.getFont().deriveFont(java.awt.Font.BOLD));
         add(form, c, row++, null, summary);
 
         report.addActionListener(e -> onReportChanged());
@@ -126,7 +138,7 @@ final class SendDialog extends JDialog {
         modeNew.addActionListener(e -> updateMode());
         modeExisting.addActionListener(e -> updateMode());
         add(form, c, row++, null, modes);
-        add(form, c, row++, "Finding", existing);
+        add(form, c, row++, "Finding", existing).setVisible(false);
 
         newOnly.add(add(form, c, row++, "Title *", title));
 
@@ -138,19 +150,13 @@ final class SendDialog extends JDialog {
         });
         cweList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         cweList.setVisibleRowCount(7);
-        cweList.setCellRenderer((list, value, index, selected, focus) -> {
-            JLabel l = new JLabel("<html><b>" + esc(value[0]) + "</b>&nbsp; " + esc(value[1]) + "</html>");
-            l.setOpaque(true);
-            l.setBorder(BorderFactory.createEmptyBorder(2, 6, 2, 6));
-            l.setBackground(selected ? list.getSelectionBackground() : list.getBackground());
-            l.setForeground(selected ? list.getSelectionForeground() : list.getForeground());
-            return l;
-        });
         cweList.addListSelectionListener(e -> {
-            String[] v = cweList.getSelectedValue();
-            if (v != null) {
+            Cwe sel = cweList.getSelectedValue();
+            if (sel != null) {
+                String[] v = sel.value();
                 chosenCwe = v[0];
-                cweChosen.setText("<html>Selected: <b>" + esc(v[0]) + "</b> " + esc(v[1]) + "</html>");
+                cweChosen.setText(plain("Selected: " + v[0] + " " + v[1]));
+                cweChosen.setToolTipText(plain(v[0] + " " + v[1]));
             }
         });
         JButton clearCwe = new JButton("Clear");
@@ -158,6 +164,7 @@ final class SendDialog extends JDialog {
             chosenCwe = "";
             cweList.clearSelection();
             cweChosen.setText("No CWE selected");
+            cweChosen.setToolTipText(null);
         });
         JPanel cwePanel = new JPanel(new BorderLayout(0, 4));
         JPanel searchRow = new JPanel(new BorderLayout(6, 0));
@@ -167,7 +174,12 @@ final class SendDialog extends JDialog {
         cwePanel.add(searchRow, BorderLayout.NORTH);
         JScrollPane cweScroll = new JScrollPane(cweList, JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED,
                 JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+        // Fixed sizes: long CWE names must not push the form wider than the dialog (GridBagLayout would then fall
+        // back to minimum sizes and collapse the list).
         cweScroll.setPreferredSize(new Dimension(520, 150));
+        cweScroll.setMinimumSize(new Dimension(320, 150));
+        cweChosen.setPreferredSize(new Dimension(200, cweChosen.getPreferredSize().height));
+        cweChosen.setMinimumSize(new Dimension(0, cweChosen.getPreferredSize().height));
         cwePanel.add(cweScroll, BorderLayout.CENTER);
         JPanel chosenRow = new JPanel(new BorderLayout(8, 0));
         chosenRow.add(cweChosen, BorderLayout.CENTER);
@@ -206,7 +218,9 @@ final class SendDialog extends JDialog {
         south.add(buttons, BorderLayout.EAST);
 
         setLayout(new BorderLayout());
-        add(form, BorderLayout.CENTER);
+        JPanel top = new JPanel(new BorderLayout());
+        top.add(form, BorderLayout.NORTH); // rows stay at the top when the mode hides some of them
+        add(top, BorderLayout.CENTER);
         add(south, BorderLayout.SOUTH);
         getRootPane().setDefaultButton(send);
         getRootPane().registerKeyboardAction(e -> dispose(), KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0),
@@ -214,7 +228,7 @@ final class SendDialog extends JDialog {
         send.setEnabled(false);
         updateMode();
         pack();
-        setMinimumSize(getSize());
+        setMinimumSize(new Dimension(getWidth(), 0)); // height follows the mode (pack in updateMode)
         setLocationRelativeTo(getOwner());
     }
 
@@ -227,6 +241,7 @@ final class SendDialog extends JDialog {
             JLabel l = new JLabel(label);
             l.setLabelFor(field);
             form.add(l, c);
+            field.putClientProperty(LABEL_KEY, l);
             c.gridx = 1;
             c.weightx = 1;
         } else {
@@ -236,27 +251,32 @@ final class SendDialog extends JDialog {
         }
         form.add(field, c);
         c.gridwidth = 1;
-        field.putClientProperty("ptreport.label", label);
         return field;
     }
 
+    /**
+     * Shows only the rows that apply to the chosen mode. Hidden rather than disabled: Burp's theme draws disabled
+     * fields almost like enabled ones, which made it look as if title, CWE and severity were still used.
+     */
     private void updateMode() {
         boolean isNew = modeNew.isSelected();
-        existing.setEnabled(!isNew);
+        showRow(existing, !isNew);
         for (JComponent comp : newOnly) {
-            setEnabledDeep(comp, isNew);
+            showRow(comp, isNew);
+        }
+        if (isDisplayable()) {
+            revalidate();
+            pack();
         }
         if (isNew) {
             title.requestFocusInWindow();
         }
     }
 
-    private static void setEnabledDeep(java.awt.Component comp, boolean on) {
-        comp.setEnabled(on);
-        if (comp instanceof java.awt.Container ct) {
-            for (java.awt.Component child : ct.getComponents()) {
-                setEnabledDeep(child, on);
-            }
+    private static void showRow(JComponent field, boolean visible) {
+        field.setVisible(visible);
+        if (field.getClientProperty(LABEL_KEY) instanceof java.awt.Component label) {
+            label.setVisible(visible);
         }
     }
 
@@ -347,16 +367,28 @@ final class SendDialog extends JDialog {
         });
     }
 
+    /**
+     * List item for a CWE. Burp's theme replaces custom cell renderers, so the text comes from toString(), which the
+     * default renderer uses.
+     */
+    private record Cwe(String[] value) {
+        @Override
+        public String toString() {
+            return plain(value[0] + "  " + value[1]);
+        }
+    }
+
     private void filterCwes() {
         String q = cweSearch.getText().trim().toLowerCase(Locale.ROOT);
         String number = q.toUpperCase(Locale.ROOT).replace("CWE-", "").trim();
         cweModel.clear();
         List<String[]> exact = new ArrayList<>();
         List<String[]> rest = new ArrayList<>();
+        String alias = CWE_ALIASES.getOrDefault(q, "");
         for (String[] c : allCwes) {
             if (q.isEmpty()) {
                 (COMMON_CWES.contains(c[0]) ? exact : rest).add(c);
-            } else if (c[0].equalsIgnoreCase("CWE-" + number)) {
+            } else if (c[0].equalsIgnoreCase("CWE-" + number) || c[0].equals(alias)) {
                 exact.add(c);
             } else if (c[0].toLowerCase(Locale.ROOT).contains(q) || c[1].toLowerCase(Locale.ROOT).contains(q)) {
                 rest.add(c);
@@ -367,7 +399,7 @@ final class SendDialog extends JDialog {
         }
         exact.addAll(rest);
         for (int k = 0; k < Math.min(CWE_RESULTS, exact.size()); k++) {
-            cweModel.addElement(exact.get(k));
+            cweModel.addElement(new Cwe(exact.get(k)));
         }
         if (!exact.isEmpty() && !q.isEmpty()) {
             cweList.setSelectedIndex(0);
@@ -505,17 +537,17 @@ final class SendDialog extends JDialog {
             area.setLineWrap(true);
             JOptionPane.showMessageDialog(this, new JScrollPane(area), "ptreport", JOptionPane.ERROR_MESSAGE);
         } else {
-            status.setText("<html>" + esc(m) + "</html>");
+            status.setText(plain(m));
         }
         log.accept(m);
     }
 
-    /** Swing renders text starting with "<html>" as HTML; data from ptreport must stay plain text. */
+    /**
+     * Swing renders text starting with "<html>" as HTML. Burp disables HTML rendering anyway, so the extension only
+     * uses plain text; this guard keeps data from ptreport plain on any other Swing host too.
+     */
     static String plain(String s) {
         return s != null && s.regionMatches(true, 0, "<html", 0, 5) ? " " + s : s;
     }
 
-    static String esc(String s) {
-        return s == null ? "" : s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
-    }
 }

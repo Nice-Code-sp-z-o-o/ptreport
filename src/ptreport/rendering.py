@@ -359,7 +359,7 @@ def cvss_rating_key(finding: dict) -> str:
 
 
 def human_size(size: Any) -> str:
-    """1536 -> '1.5 KB' (binary units, as file managers show them)."""
+    """1536 -> '1.5 KB', 25 MiB -> '25 MB' (binary units, as file managers show them)."""
     try:
         value = float(size)
     except (TypeError, ValueError):
@@ -369,7 +369,7 @@ def human_size(size: Any) -> str:
     for unit in ("KB", "MB", "GB"):
         value /= 1024
         if value < 1024 or unit == "GB":
-            return f"{value:.1f} {unit}"
+            return f"{value:.1f}".removesuffix(".0") + f" {unit}"
     return ""
 
 

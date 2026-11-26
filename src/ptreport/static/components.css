@@ -457,6 +457,7 @@ pre.code code { padding: 0; background: none; border: 0; font-size: inherit; }
 .file-list { display: grid; margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--c-line); }
 .file-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: start; gap: var(--sp-2) var(--sp-4); padding: var(--sp-3) 0; border-bottom: 1px solid var(--c-line); }
 .file-icon { display: grid; place-items: center; width: var(--h-md); height: var(--h-md); color: var(--c-muted); background: var(--c-surface); border: 1px solid var(--c-line); border-radius: var(--radius); }
+.file-icon .icon { width: 24px; height: 24px; }
 .file-main { display: grid; gap: var(--sp-1); min-width: 0; }
 .file-name { font-weight: var(--fw-medium); overflow-wrap: anywhere; }
 .file-meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1) var(--sp-4); font-size: var(--fs-sm); color: var(--c-muted); }

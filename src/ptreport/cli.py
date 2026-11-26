@@ -151,6 +151,15 @@ def _build_parser() -> argparse.ArgumentParser:
                      help="output file, a directory, or '-' for standard output")
     exp.add_argument("--force", action="store_true", help="overwrite an existing file")
 
+    mcp = sub.add_parser(
+        "mcp", parents=[common], help="run the MCP server (stdio) for AI agent clients",
+        description="Model Context Protocol server over stdio for agent clients (Claude Code, Codex, Cursor ...). "
+                    "Read tools return reports, findings, scope, CWE and templates; write tools only create "
+                    "proposals in a report's AI queue, which you review in the web app. Only protocol messages "
+                    "go to stdout; logs go to stderr. Example: claude mcp add ptreport -- ptreport mcp")
+    mcp.add_argument("--report", type=_report_id, metavar="ID", help="pin every call to this report")
+    mcp.add_argument("--read-only", action="store_true", help="hide the propose_* tools")
+
     imp = sub.add_parser("import-json", parents=[common], help="import a ptreport JSON export as a new report",
                          description="Import a JSON export (made by ptreport) as a new report and print its id.")
     imp.add_argument("file", help="JSON export file ('-' for standard input)")
@@ -500,6 +509,20 @@ def cmd_import_json(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def cmd_mcp(args: argparse.Namespace) -> int:
+    from ptreport import mcp
+
+    _app, conn = _open(args)
+    with closing(conn):
+        if args.report is not None:
+            _require_report(conn, args.report)
+        try:
+            mcp.run(conn, report_id=args.report, read_only=args.read_only)
+        except (BrokenPipeError, KeyboardInterrupt):
+            pass
+    return EXIT_OK
+
+
 COMMANDS = {
     ("report", "list"): cmd_report_list,
     ("report", "create"): cmd_report_create,
@@ -507,6 +530,7 @@ COMMANDS = {
     ("import-scan", None): cmd_import_scan,
     ("export", None): cmd_export,
     ("import-json", None): cmd_import_json,
+    ("mcp", None): cmd_mcp,
 }
 
 

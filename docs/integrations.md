@@ -11,6 +11,7 @@ manual input when it arrives *and again* when you accept it, and accepting is al
 - [How results get in](#how-results-get-in)
 - [The AI queue](#the-ai-queue)
 - [ptreport proposal JSON v1](#ptreport-proposal-json-v1)
+- [MCP server: `ptreport mcp`](#mcp-server-ptreport-mcp)
 - [Integration tokens and the API](#integration-tokens-and-the-api)
 - [Security notes](#security-notes)
 
@@ -187,6 +188,87 @@ it.
 ```json
 {"kind": "target", "data": {"name": "Router firmware 2.1", "kind": "firmware", "address": "fw/router-2.1.bin"}}
 ```
+
+## MCP server: `ptreport mcp`
+
+`ptreport mcp` is a [Model Context Protocol](https://modelcontextprotocol.io) server over **stdio**
+(newline-delimited JSON-RPC 2.0). It is built into ptreport, needs no extra package, and works on the same
+database as the running web app (WAL mode, one transaction per write), so you can keep the browser open on the
+AI queue while the agent works.
+
+```bash
+ptreport mcp                       # all reports, read + propose tools
+ptreport mcp --report 3            # pin every call to report 3 (report_id becomes optional)
+ptreport mcp --read-only           # hide the propose_* tools
+ptreport mcp --data-dir ~/cases/acme/ptreport-data
+```
+
+Only protocol messages are written to stdout; logs go to stderr. Supported methods: `initialize` (protocol
+versions 2025-11-25, 2025-06-18, 2025-03-26, 2024-11-05; the client's version when supported, otherwise the
+newest), `notifications/initialized`, `ping`, `tools/list`, `tools/call`. Errors follow JSON-RPC (`-32700` parse
+error, `-32600` invalid request, `-32601` unknown method, `-32602` invalid params / unknown tool); a tool call
+that fails validation returns `isError: true` with the field errors, so the model can correct itself.
+
+| Tool | Does |
+|---|---|
+| `list_reports` | reports with client, dates, finding counts, pending proposals |
+| `get_report` | summary, targets and findings (id, display id, title, severity, status, CWE, CVSS, retest result, origin) |
+| `get_scope` | the engagement scope ([below](#scope-for-agents)); `format: "markdown"` for a short brief |
+| `search_cwe` | the bundled MITRE CWE catalogue |
+| `list_templates` | the finding template library (EN/PL) |
+| `list_proposals` | the report's AI queue and the decisions taken |
+| `propose_finding` | a new finding with targets, HTTP evidence and code evidence |
+| `propose_http_evidence` | a request/response for an existing finding |
+| `propose_code_evidence` | a code snippet (decompiled function, disassembly, source) for an existing finding |
+| `propose_file` | a file (base64, ≤ 25 MB) for an existing finding |
+| `propose_retest_result` | an explicit retest result for a finding |
+
+Every `propose_*` tool takes an optional `verdict` and `source` (`tool`, `version`, `run_id`, `model`); without a
+source the MCP client's name is recorded (e.g. `claude-code (MCP)`). **Write tools only create proposals.**
+
+### Register it
+
+ptreport must be on the client's `PATH` (`install.sh` links it into `~/.local/bin`); GUI clients may need the
+absolute path (`which ptreport`).
+
+**Claude Code**
+
+```bash
+claude mcp add ptreport -- ptreport mcp
+claude mcp add ptreport-acme -- ptreport mcp --report 3      # one engagement only
+```
+
+**Codex CLI** – `codex mcp add ptreport -- ptreport mcp`, or in `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.ptreport]
+command = "ptreport"
+args = ["mcp"]
+```
+
+**Cursor** – `~/.cursor/mcp.json` (all projects) or `.cursor/mcp.json` (one project):
+
+```json
+{"mcpServers": {"ptreport": {"command": "ptreport", "args": ["mcp", "--report", "3"]}}}
+```
+
+Any other MCP client: command `ptreport`, arguments `mcp …`, transport stdio.
+
+### Recommended setup: one agent client, several MCP servers
+
+Register the offensive tools **and** ptreport in the same agent client. The agent then drives the tools and pushes
+what it found into ptreport's AI queue in the same session; you review in the browser.
+
+```bash
+claude mcp add ptreport   -- ptreport mcp --report 3
+claude mcp add decepticon -- decepticon mcp serve        # autonomous red team (PurpleAILAB)
+ptai setup --mcp                                          # pentest-ai: registers its own MCP server
+claude mcp add ghidra     -- <your Ghidra / IDA MCP bridge command>   # reverse engineering
+```
+
+A prompt that works well: *"Read the scope with ptreport get_scope (report 3). Test only those targets. For every
+issue you can verify, call ptreport propose_finding with the request/response that proves it, verdict and
+source; attach code locations with propose_code_evidence."*
 
 ## Integration tokens and the API
 

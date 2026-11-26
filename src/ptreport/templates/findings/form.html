@@ -173,9 +173,11 @@
       {% if attachments %}
         <ul class="shot-list">
           {% for a in attachments %}
+            {% set shot_src = url_for('web.attachment_file', attachment_id=a.id, v=a.sha256[:12]) %}
             <li class="shot">
-              <a class="shot-img" href="{{ url_for('web.attachment_file', attachment_id=a.id) }}" target="_blank" rel="noopener">
-                <img src="{{ url_for('web.attachment_file', attachment_id=a.id) }}" alt="{{ a.caption or ('Screenshot ' ~ loop.index) }}" loading="lazy">
+              <a class="shot-img" href="{{ shot_src }}" target="_blank" rel="noopener">
+                <img src="{{ shot_src }}" alt="{{ a.caption or ('Screenshot ' ~ loop.index) }}" loading="lazy">
+                {% if a.edited %}<span class="chip shot-badge" title="Edited {{ a.edited_at }} UTC; the original is kept">{{ icon('edit') }}Edited</span>{% endif %}
               </a>
               <form method="post" action="{{ url_for('web.attachment_caption', attachment_id=a.id) }}" class="shot-caption">
                 <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
@@ -183,8 +185,14 @@
                 <input class="input" id="cap-{{ a.id }}" name="caption" value="{{ a.caption }}" maxlength="300" placeholder="Caption">
                 <button class="btn btn-sm" type="submit">Save</button>
               </form>
-              <div class="shot-meta"><span class="muted small">{{ (a.size / 1024)|round|int }} KB · {{ a.mime.split('/')[1]|upper }}</span>
+              <div class="shot-meta"><span class="muted small">{{ (a.size / 1024)|round|int }} KB · {{ a.mime.split('/')[1]|upper }}{% if a.edited %} · <a href="{{ url_for('web.attachment_original', attachment_id=a.id) }}" target="_blank" rel="noopener">original</a>{% endif %}</span>
                 {{ post_button(url_for('web.attachment_delete', attachment_id=a.id), 'Delete', 'btn btn-sm btn-danger', 'Delete this screenshot?', icon_name='trash') }}</div>
+              <div class="shot-actions cluster">
+                <button class="btn btn-sm" type="button" hidden data-shot-edit
+                  data-src="{{ shot_src }}" data-action="{{ url_for('web.attachment_edit', attachment_id=a.id) }}"
+                  data-title="{{ a.caption or ('Screenshot ' ~ loop.index) }}">{{ icon('crop') }}Edit</button>
+                {% if a.edited %}{{ post_button(url_for('web.attachment_restore', attachment_id=a.id), 'Restore original', 'btn btn-sm', 'Restore the original screenshot? The edited version will be discarded.', icon_name='undo') }}{% endif %}
+              </div>
             </li>
           {% endfor %}
         </ul>
@@ -250,4 +258,55 @@
   {% endif %}
 </div>
 {% endblock %}
-{% block scripts %}<script src="{{ url_for('static', filename='cvss.js') }}"></script><script src="{{ url_for('static', filename='targets.js') }}"></script>{% endblock %}
+{% block dialogs %}
+  {% if finding and attachments %}
+  <dialog class="modal modal-pdf modal-editor" id="shot-editor" aria-labelledby="shot-editor-title" data-csrf="{{ csrf_token() }}">
+    <div class="modal-pdf-head">
+      <h2 id="shot-editor-title">Edit screenshot<span class="muted" data-editor-name></span></h2>
+      <div class="cluster">
+        <button class="btn btn-icon btn-sm" type="button" data-editor-cancel aria-label="Close the editor without saving">{{ icon('x') }}</button>
+      </div>
+    </div>
+    <div class="editor-toolbar" role="toolbar" aria-label="Screenshot tools">
+      <div class="segmented segmented-sm" role="group" aria-label="Tool">
+        <button class="seg-btn" type="button" data-tool="arrow" aria-pressed="true" title="Arrow (A)">{{ icon('arrow') }}Arrow</button>
+        <button class="seg-btn" type="button" data-tool="rect" aria-pressed="false" title="Box (B)">{{ icon('square') }}Box</button>
+        <button class="seg-btn" type="button" data-tool="pixelate" aria-pressed="false" title="Pixelate a region to hide secrets (P)">{{ icon('pixelate') }}Pixelate</button>
+        <button class="seg-btn" type="button" data-tool="crop" aria-pressed="false" title="Crop (C)">{{ icon('crop') }}Crop</button>
+      </div>
+      <div class="segmented segmented-sm" role="group" aria-label="Colour" data-editor-colours>
+        <button class="seg-btn" type="button" data-colour="--c-danger-strong" aria-pressed="true" aria-label="Red" title="Red"><span class="swatch" data-swatch></span></button>
+        <button class="seg-btn" type="button" data-colour="--c-accent" aria-pressed="false" aria-label="Accent" title="Accent"><span class="swatch" data-swatch></span></button>
+        <button class="seg-btn" type="button" data-colour="--c-sev-medium" aria-pressed="false" aria-label="Yellow" title="Yellow"><span class="swatch" data-swatch></span></button>
+        <button class="seg-btn" type="button" data-colour="--c-text" aria-pressed="false" aria-label="White" title="White"><span class="swatch" data-swatch></span></button>
+      </div>
+      <div class="segmented segmented-sm" role="group" aria-label="Stroke width">
+        <button class="seg-btn" type="button" data-stroke="1" aria-pressed="false" title="Thin stroke">S</button>
+        <button class="seg-btn" type="button" data-stroke="2" aria-pressed="true" title="Medium stroke">M</button>
+        <button class="seg-btn" type="button" data-stroke="3" aria-pressed="false" title="Thick stroke">L</button>
+      </div>
+      <div class="cluster">
+        <button class="btn btn-icon btn-sm" type="button" data-editor-undo aria-label="Undo" title="Undo (Ctrl+Z)" disabled>{{ icon('undo') }}</button>
+        <button class="btn btn-icon btn-sm" type="button" data-editor-redo aria-label="Redo" title="Redo (Ctrl+Shift+Z)" disabled>{{ icon('redo') }}</button>
+      </div>
+      <div class="cluster" data-crop-actions hidden>
+        <button class="btn btn-sm btn-primary" type="button" data-crop-apply disabled>{{ icon('check') }}Apply crop</button>
+        <span class="muted small">Drag to select, then apply (Enter).</span>
+      </div>
+    </div>
+    <div class="modal-pdf-body editor-stage" data-editor-stage>
+      <div class="pdf-status" data-editor-status role="status" aria-live="polite">{{ icon('spinner') }}<span data-editor-message>Loading the screenshot…</span></div>
+      <canvas class="editor-canvas" data-editor-canvas hidden aria-label="Screenshot being edited"></canvas>
+    </div>
+    <div class="modal-foot editor-foot">
+      <p class="muted small editor-hint" data-editor-info>Pixelated areas are replaced with flat blocks in the saved image and cannot be recovered from it. The original upload is kept in ptreport until you delete the screenshot.</p>
+      <p class="field-error" data-editor-error role="alert" hidden></p>
+      <div class="cluster">
+        <button class="btn btn-ghost" type="button" data-editor-cancel>Cancel</button>
+        <button class="btn btn-primary" type="button" data-editor-save disabled>{{ icon('check') }}Save</button>
+      </div>
+    </div>
+  </dialog>
+  {% endif %}
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='cvss.js') }}"></script><script src="{{ url_for('static', filename='targets.js') }}"></script>{% if finding and attachments %}<script src="{{ url_for('static', filename='screenshot-editor.js') }}"></script>{% endif %}{% endblock %}

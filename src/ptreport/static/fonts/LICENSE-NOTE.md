@@ -1,5 +1,7 @@
 # Font licences
 
+The licence text and copyright notices are in [`OFL.txt`](OFL.txt).
+
 Both families are self-hosted as variable woff2 files (weight axis 100-900), latin and latin-ext subsets (latin-ext covers Polish).
 
 | Family | Files | Source | Licence |

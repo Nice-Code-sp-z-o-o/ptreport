@@ -1,5 +1,8 @@
 # ptreport
 
+[![CI](https://github.com/Nice-Code-sp-z-o-o/ptreport/actions/workflows/ci.yml/badge.svg)](https://github.com/Nice-Code-sp-z-o-o/ptreport/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 A pentest report generator that runs on your own machine. Everything stays local:
 one SQLite file, no accounts, no cloud.
 
@@ -322,7 +325,8 @@ src/ptreport/
   repo.py           all SQL (parameterised)
   validation.py     server-side validation for forms / API / import
   cvss_service.py   CVSS scoring + calculator metric definitions
-  cwe.py            curated CWE list for autocomplete
+  cwe.py            MITRE CWE catalogue (search, names, mitigations)
+  ai.py             optional local AI assistant (Ollama, loopback only)
   security.py       Host allow-list, CSRF, API token, security headers
   views.py          browser UI
   api.py            JSON API v1
@@ -334,3 +338,19 @@ src/ptreport/
   templates/ static/
 tests/              pytest suite
 ```
+
+## Contributing
+
+Issues and pull requests are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md) and the
+[code of conduct](CODE_OF_CONDUCT.md). Changes are listed in [CHANGELOG.md](CHANGELOG.md).
+
+**Security issues:** please report them privately as described in [SECURITY.md](SECURITY.md).
+
+## License
+
+ptreport is released under the [MIT License](LICENSE). It ships the MITRE CWE List (CWE Terms of Use) and
+the Hanken Grotesk and JetBrains Mono fonts (SIL Open Font License 1.1); details and the licenses of
+dependencies are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+Burp Suite is a trademark of PortSwigger Ltd. and CWE is a trademark of The MITRE Corporation; ptreport is not
+affiliated with or endorsed by them.

@@ -1,0 +1,41 @@
+name: Bug report
+description: Something does not work as described
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. **Do not paste client data, findings or tokens** – use made-up examples.
+        Security problems go to *Security → Report a vulnerability* instead.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Create a report with …
+        2. Export as PDF …
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: ptreport version or commit
+      placeholder: "ptreport --version"
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: OS, Python version, browser (and Burp version for the extension)
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or LaTeX error output
+      render: text

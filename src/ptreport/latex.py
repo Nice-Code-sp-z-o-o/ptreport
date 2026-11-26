@@ -34,6 +34,7 @@ from jinja2.sandbox import SandboxedEnvironment
 from ptreport.cvss_service import vector_strip
 from ptreport.cwe import cwe_name, cwe_url
 from ptreport.rendering import (
+    CODE_LANGUAGE_LABELS,
     CONFIDENCE_LABELS,
     CVSS_RATING_LABELS,
     SEVERITY_LABELS,
@@ -41,6 +42,7 @@ from ptreport.rendering import (
     TARGET_KIND_LABELS,
     cvss_rating_key,
     cvss_rating_label,
+    human_size,
     inline_tokens,
     labels_for,
     parse_blocks,
@@ -217,6 +219,18 @@ def make_env(build: Build) -> SandboxedEnvironment:
         name = build.add("figure", ext, attachment["data"])
         return TexSafe(rf"\ptImage{{{name}}}")
 
+    def breakable(text: str, run: int = 12) -> TexSafe:
+        """Escaped text that may wrap after . _ - or every few characters (long file names in table cells)."""
+        chunks, current = [], ""
+        for ch in str(text or ""):
+            current += ch
+            if ch in "._-" or len(current) >= run:
+                chunks.append(current)
+                current = ""
+        if current:
+            chunks.append(current)
+        return TexSafe(r"\allowbreak{}".join(escape_tex(c) for c in chunks))
+
     def asset(obj: dict | None, stem: str = "asset") -> TexSafe:
         """Write an image ({mime, data}) next to report.tex and return its path ('' when unusable)."""
         ext = {"image/png": "png", "image/jpeg": "jpg"}.get((obj or {}).get("mime", ""))
@@ -233,6 +247,8 @@ def make_env(build: Build) -> SandboxedEnvironment:
         url=url,
         reference_list=reference_list,
         image=image,
+        breakable=breakable,
+        filesize=human_size,
         cwe_name=cwe_name,
         cwe_url=cwe_url,
         url_cwe=lambda c: url(cwe_url(c), c),
@@ -295,6 +311,12 @@ def sample_context() -> dict:
         "evidence": [{"title": "Proof", "request": "GET / HTTP/1.1\nHost: portal.example\n\n",
                       "response": "HTTP/1.1 200 OK\n\n<script>alert(1)</script>", "source": "manual"}],
         "attachments": [],
+        "code_evidence": [{"title": "Unescaped output", "location": "web/templates/comment.py:42 render_comment",
+                           "language": "python", "code": "return f\"<p>{body}</p>\"  # \\ $ % { } _ ^ ~ #",
+                           "note": "The body is user input."}],
+        "files": [{"filename": "capture_2026-01-02_portal-login.pcapng", "description": "Traffic during login",
+                   "mime": "application/vnd.tcpdump.pcap", "size": 48213, "sha256": "ab" * 32,
+                   "uploaded_at": "2026-01-02 10:00:00"}],
         "history": [{"date": "2026-01-02", "author": "Jan Kowalski", "kind": "status", "status_from": "open",
                      "status_to": "fixed", "description": "", "text": "Status: Open → Fixed"}],
         "history_has_author": True,
@@ -325,7 +347,7 @@ def sample_context() -> dict:
         "sections": sections, "groups": groups, "matrix": matrix, "fingerprint": "0" * 64,
         "per_target": [{"name": "Customer portal", "counts": {**counts}, "total": 1}],
         "sev_labels": labels["sev"], "status_labels": labels["status"], "conf_labels": labels["conf"],
-        "report": report, "cvss_header": "CVSS 3.1", "brand": {"color": "1D3557", "logo": None},
+        "code_lang_labels": CODE_LANGUAGE_LABELS["en"], "report": report, "cvss_header": "CVSS 3.1", "brand": {"color": "1D3557", "logo": None},
         "versions": [version], "all_versions": [version], "versions_have_author": True,
         "show_finding_history": True, "targets": finding["targets"], "findings": [finding], "counts": counts,
         "severities": ("critical", "high", "medium", "low", "info"), "L": labels["L"], "lang": "en",

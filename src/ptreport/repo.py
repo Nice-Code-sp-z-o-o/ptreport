@@ -13,9 +13,9 @@ from datetime import date
 import sqlite3
 from typing import Any
 
-from ptreport import ids
+from ptreport import ai, ids
 from ptreport.db import transaction
-from ptreport.validation import DEFAULT_BRAND_COLOR, SEVERITY_RANK
+from ptreport.validation import DEFAULT_BRAND_COLOR, OPEN_STATUSES, SEVERITY_RANK
 
 REPORT_FIELDS = (
     "title", "client_name", "assessor", "start_date", "end_date", "language",
@@ -30,7 +30,11 @@ FINDING_FIELDS = (
     "external_id", "confidence", "retest_result", "retest_date", "retest_notes",
 )
 EVIDENCE_FIELDS = ("title", "request", "response", "source")
-ATTACHMENT_META = "id, finding_id, position, caption, mime, sha256, length(data) AS size, created_at"
+CODE_FIELDS = ("title", "location", "language", "code", "note")
+ATTACHMENT_META = ("id, finding_id, position, caption, mime, sha256, length(data) AS size, created_at, "
+                   "original_data IS NOT NULL AS edited, edited_at")
+FILE_META = "id, finding_id, position, filename, description, mime, size, sha256, uploaded_at"
+FILE_FIELDS = ("filename", "description", "mime", "size", "sha256", "uploaded_at")
 
 
 def _row(row: sqlite3.Row | None) -> dict | None:
@@ -54,6 +58,21 @@ def list_reports(conn: sqlite3.Connection) -> list[dict]:
         """
     ).fetchall()
     return [dict(r) for r in rows]
+
+
+def finding_counts_by_report(conn: sqlite3.Connection) -> dict[int, dict]:
+    """Per report: findings by severity plus how many are still open (one query for all reports)."""
+    out: dict[int, dict] = {}
+    marks = _placeholders(len(OPEN_STATUSES))
+    for row in conn.execute(
+        f"SELECT report_id, severity, status IN ({marks}) AS is_open, COUNT(*) AS n FROM findings "
+        "GROUP BY report_id, severity, is_open", OPEN_STATUSES
+    ):
+        entry = out.setdefault(row["report_id"], {"severity": {s: 0 for s in SEVERITY_RANK}, "open": 0})
+        entry["severity"][row["severity"]] = entry["severity"].get(row["severity"], 0) + row["n"]
+        if row["is_open"]:
+            entry["open"] += row["n"]
+    return out
 
 
 def get_report(conn: sqlite3.Connection, report_id: int) -> dict | None:
@@ -151,6 +170,8 @@ def list_findings(conn: sqlite3.Connection, report_id: int) -> list[dict]:
         f["targets"] = []
         f["evidence"] = []
         f["attachments"] = []
+        f["files"] = []
+        f["code_evidence"] = []
         f["history"] = []
     finding_ids = list(by_id)
     for row in conn.execute(
@@ -177,6 +198,18 @@ def list_findings(conn: sqlite3.Connection, report_id: int) -> list[dict]:
     ):
         by_id[row["finding_id"]]["attachments"].append(dict(row))
     for row in conn.execute(
+        f"SELECT {FILE_META} FROM finding_files WHERE finding_id IN ({_placeholders(len(finding_ids))}) "
+        "ORDER BY position, id",
+        finding_ids,
+    ):
+        by_id[row["finding_id"]]["files"].append(dict(row))
+    for row in conn.execute(
+        f"SELECT * FROM code_evidence WHERE finding_id IN ({_placeholders(len(finding_ids))}) "
+        "ORDER BY position, id",
+        finding_ids,
+    ):
+        by_id[row["finding_id"]]["code_evidence"].append(dict(row))
+    for row in conn.execute(
         f"SELECT * FROM finding_history WHERE finding_id IN ({_placeholders(len(finding_ids))}) "
         "ORDER BY COALESCE(date, ''), id",
         finding_ids,
@@ -197,6 +230,8 @@ def get_finding(conn: sqlite3.Connection, finding_id: int) -> dict | None:
     ]
     finding["evidence"] = list_evidence(conn, finding_id)
     finding["attachments"] = list_attachments(conn, finding_id)
+    finding["files"] = list_files(conn, finding_id)
+    finding["code_evidence"] = list_code_evidence(conn, finding_id)
     finding["history"] = list_history(conn, finding_id)
     return finding
 
@@ -215,9 +250,9 @@ def create_finding(conn: sqlite3.Connection, report_id: int, data: dict) -> int:
             "SELECT COALESCE(MAX(position), 0) + 1 FROM findings WHERE report_id = ?", (report_id,)
         ).fetchone()[0]
         cur = conn.execute(
-            f"INSERT INTO findings (report_id, position, {', '.join(FINDING_FIELDS)}) "
-            f"VALUES (?, ?, {_placeholders(len(FINDING_FIELDS))})",
-            [report_id, position] + [data.get(f, "") for f in FINDING_FIELDS],
+            f"INSERT INTO findings (report_id, position, origin, {', '.join(FINDING_FIELDS)}) "
+            f"VALUES (?, ?, ?, {_placeholders(len(FINDING_FIELDS))})",
+            [report_id, position, data.get("origin") or ""] + [data.get(f, "") for f in FINDING_FIELDS],
         )
         finding_id = int(cur.lastrowid)
         _set_finding_targets(conn, finding_id, data.get("target_ids", []))
@@ -358,6 +393,25 @@ def set_latex_template(conn: sqlite3.Connection, source: str | None) -> None:
         save_settings(conn, {"latex_template": source})
 
 
+AI_DEFAULT_URL = ai.DEFAULT_URL
+
+
+def get_ai_settings(conn: sqlite3.Connection) -> dict:
+    """Local writing assistant (Ollama): off by default."""
+    stored = {r["key"]: r["value"] for r in conn.execute(
+        "SELECT key, value FROM settings WHERE key IN ('ai_enabled', 'ai_url', 'ai_model')")}
+    return {
+        "enabled": stored.get("ai_enabled") == "1",
+        "url": stored.get("ai_url") or AI_DEFAULT_URL,
+        "model": stored.get("ai_model") or "",
+    }
+
+
+def set_ai_settings(conn: sqlite3.Connection, data: dict) -> None:
+    save_settings(conn, {"ai_enabled": "1" if data["enabled"] else "0", "ai_url": data["url"],
+                         "ai_model": data["model"]})
+
+
 def save_settings(conn: sqlite3.Connection, values: dict) -> None:
     with transaction(conn):
         conn.executemany(
@@ -367,7 +421,7 @@ def save_settings(conn: sqlite3.Connection, values: dict) -> None:
 
 
 def finding_display_id(report: dict, finding: dict, settings: dict | None = None) -> str:
-    """The finding's own ID when set (e.g. LT-0002); otherwise the report's or the global ID format."""
+    """The finding's own ID when set (e.g. SEC-0002); otherwise the report's or the global ID format."""
     if finding.get("external_id"):
         return finding["external_id"]
     settings = settings or {"id_format": ids.DEFAULT_TEMPLATE, "id_start": ids.DEFAULT_START}
@@ -422,6 +476,45 @@ def delete_evidence(conn: sqlite3.Connection, evidence: dict) -> None:
     conn.execute("DELETE FROM http_evidence WHERE id = ?", (evidence["id"],))
 
 
+# ----------------------------------------------------------- code evidence --
+
+def list_code_evidence(conn: sqlite3.Connection, finding_id: int) -> list[dict]:
+    return [dict(r) for r in conn.execute(
+        "SELECT * FROM code_evidence WHERE finding_id = ? ORDER BY position, id", (finding_id,))]
+
+
+def get_code_evidence(conn: sqlite3.Connection, code_id: int) -> dict | None:
+    return _row(conn.execute("SELECT * FROM code_evidence WHERE id = ?", (code_id,)).fetchone())
+
+
+def create_code_evidence(conn: sqlite3.Connection, finding: dict, data: dict) -> int:
+    with transaction(conn):
+        position = conn.execute(
+            "SELECT COALESCE(MAX(position), 0) + 1 FROM code_evidence WHERE finding_id = ?", (finding["id"],)
+        ).fetchone()[0]
+        cur = conn.execute(
+            f"INSERT INTO code_evidence (finding_id, position, {', '.join(CODE_FIELDS)}) "
+            f"VALUES (?, ?, {_placeholders(len(CODE_FIELDS))})",
+            [finding["id"], position] + [data.get(f, "") for f in CODE_FIELDS],
+        )
+        conn.execute("UPDATE findings SET updated_at = datetime('now') WHERE id = ?", (finding["id"],))
+        touch_report(conn, finding["report_id"])
+    return int(cur.lastrowid)
+
+
+def update_code_evidence(conn: sqlite3.Connection, item: dict, data: dict) -> None:
+    with transaction(conn):
+        conn.execute(f"UPDATE code_evidence SET {', '.join(f + ' = ?' for f in CODE_FIELDS)} WHERE id = ?",
+                     [data.get(f, "") for f in CODE_FIELDS] + [item["id"]])
+        _touch_attachment_finding(conn, item["finding_id"])
+
+
+def delete_code_evidence(conn: sqlite3.Connection, item: dict) -> None:
+    with transaction(conn):
+        conn.execute("DELETE FROM code_evidence WHERE id = ?", (item["id"],))
+        _touch_attachment_finding(conn, item["finding_id"])
+
+
 def severity_counts(findings: list[dict[str, Any]]) -> dict[str, int]:
     counts = {s: 0 for s in SEVERITY_RANK}
     for f in findings:
@@ -441,7 +534,7 @@ def list_attachments(conn: sqlite3.Connection, finding_id: int) -> list[dict]:
 
 
 def get_attachment(conn: sqlite3.Connection, attachment_id: int, with_data: bool = False) -> dict | None:
-    columns = "*" if with_data else ATTACHMENT_META
+    columns = ATTACHMENT_META + (", data, original_mime, original_data, original_sha256" if with_data else "")
     return _row(conn.execute(f"SELECT {columns} FROM attachments WHERE id = ?", (attachment_id,)).fetchone())
 
 
@@ -464,14 +557,74 @@ def create_attachment(conn: sqlite3.Connection, finding: dict, data: dict) -> in
         position = conn.execute(
             "SELECT COALESCE(MAX(position), 0) + 1 FROM attachments WHERE finding_id = ?", (finding["id"],)
         ).fetchone()[0]
+        original = data.get("original_data")
         cur = conn.execute(
-            "INSERT INTO attachments (finding_id, position, caption, mime, data, sha256) VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO attachments (finding_id, position, caption, mime, data, sha256, original_mime, original_data,"
+            " original_sha256, edited_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (finding["id"], position, data.get("caption", ""), data["mime"], data["data"],
-             hashlib.sha256(data["data"]).hexdigest()),
+             hashlib.sha256(data["data"]).hexdigest(),
+             data.get("original_mime") if original else None, original,
+             hashlib.sha256(original).hexdigest() if original else None,
+             (data.get("edited_at") or _sql_now(conn)) if original else None),
         )
         conn.execute("UPDATE findings SET updated_at = datetime('now') WHERE id = ?", (finding["id"],))
         touch_report(conn, finding["report_id"])
     return int(cur.lastrowid)
+
+
+def _sql_now(conn: sqlite3.Connection) -> str:
+    return conn.execute("SELECT datetime('now')").fetchone()[0]
+
+
+def attachment_originals(conn: sqlite3.Connection, attachment_ids: list[int]) -> dict[int, tuple[str, bytes]]:
+    """Untouched originals of edited screenshots (attachments that were never edited are left out)."""
+    if not attachment_ids:
+        return {}
+    rows = conn.execute(
+        f"SELECT id, original_mime, original_data FROM attachments WHERE original_data IS NOT NULL "
+        f"AND id IN ({_placeholders(len(attachment_ids))})",
+        list(attachment_ids),
+    )
+    return {r["id"]: (r["original_mime"], r["original_data"]) for r in rows}
+
+
+def save_edited_attachment(conn: sqlite3.Connection, attachment: dict, mime: str, data: bytes) -> None:
+    """Replace a screenshot's image with an edited version.
+
+    The first edit moves the current image into the ``original_*`` columns; later edits only replace the
+    edited image, so the original is always the image as it was uploaded."""
+    with transaction(conn):
+        conn.execute(
+            """UPDATE attachments SET
+                 original_mime   = COALESCE(original_mime, mime),
+                 original_sha256 = CASE WHEN original_data IS NULL THEN sha256 ELSE original_sha256 END,
+                 original_data   = COALESCE(original_data, data),
+                 mime = ?, data = ?, sha256 = ?, edited_at = datetime('now')
+               WHERE id = ?""",
+            (mime, data, hashlib.sha256(data).hexdigest(), attachment["id"]),
+        )
+        _touch_attachment_finding(conn, attachment["finding_id"])
+
+
+def restore_attachment_original(conn: sqlite3.Connection, attachment: dict) -> bool:
+    """Bring back the original image and drop the edited one. False when the screenshot was never edited."""
+    with transaction(conn):
+        cur = conn.execute(
+            """UPDATE attachments SET mime = original_mime, data = original_data, sha256 = original_sha256,
+                 original_mime = NULL, original_data = NULL, original_sha256 = NULL, edited_at = NULL
+               WHERE id = ? AND original_data IS NOT NULL""",
+            (attachment["id"],),
+        )
+        if cur.rowcount:
+            _touch_attachment_finding(conn, attachment["finding_id"])
+    return bool(cur.rowcount)
+
+
+def _touch_attachment_finding(conn: sqlite3.Connection, finding_id: int) -> None:
+    conn.execute("UPDATE findings SET updated_at = datetime('now') WHERE id = ?", (finding_id,))
+    row = conn.execute("SELECT report_id FROM findings WHERE id = ?", (finding_id,)).fetchone()
+    if row:
+        touch_report(conn, row["report_id"])
 
 
 def update_attachment_caption(conn: sqlite3.Connection, attachment: dict, caption: str) -> None:
@@ -480,6 +633,65 @@ def update_attachment_caption(conn: sqlite3.Connection, attachment: dict, captio
 
 def delete_attachment(conn: sqlite3.Connection, attachment: dict) -> None:
     conn.execute("DELETE FROM attachments WHERE id = ?", (attachment["id"],))
+
+
+# ---------------------------------------------------------- evidence files --
+
+def list_files(conn: sqlite3.Connection, finding_id: int) -> list[dict]:
+    return [
+        dict(r)
+        for r in conn.execute(
+            f"SELECT {FILE_META} FROM finding_files WHERE finding_id = ? ORDER BY position, id", (finding_id,)
+        )
+    ]
+
+
+def get_file(conn: sqlite3.Connection, file_id: int, with_data: bool = False) -> dict | None:
+    columns = "*" if with_data else FILE_META
+    return _row(conn.execute(f"SELECT {columns} FROM finding_files WHERE id = ?", (file_id,)).fetchone())
+
+
+def file_data(conn: sqlite3.Connection, file_ids: list[int]) -> dict[int, bytes]:
+    if not file_ids:
+        return {}
+    rows = conn.execute(
+        f"SELECT id, data FROM finding_files WHERE id IN ({_placeholders(len(file_ids))})", list(file_ids)
+    )
+    return {r["id"]: r["data"] for r in rows}
+
+
+def file_usage(conn: sqlite3.Connection, finding_id: int) -> tuple[int, int]:
+    """(number of files, total bytes) of a finding, for the per-finding limits."""
+    row = conn.execute(
+        "SELECT COUNT(*), COALESCE(SUM(size), 0) FROM finding_files WHERE finding_id = ?", (finding_id,)
+    ).fetchone()
+    return int(row[0]), int(row[1])
+
+
+def create_file(conn: sqlite3.Connection, finding: dict, data: dict) -> int:
+    """Store a validated file. Size and SHA-256 are recomputed from the bytes, never taken from the caller."""
+    blob = data["data"]
+    with transaction(conn):
+        position = conn.execute(
+            "SELECT COALESCE(MAX(position), 0) + 1 FROM finding_files WHERE finding_id = ?", (finding["id"],)
+        ).fetchone()[0]
+        cur = conn.execute(
+            "INSERT INTO finding_files (finding_id, position, filename, description, mime, size, sha256, data, "
+            "uploaded_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now')))",
+            (finding["id"], position, data["filename"], data.get("description", ""), data["mime"], len(blob),
+             hashlib.sha256(blob).hexdigest(), blob, data.get("uploaded_at")),
+        )
+        conn.execute("UPDATE findings SET updated_at = datetime('now') WHERE id = ?", (finding["id"],))
+        touch_report(conn, finding["report_id"])
+    return int(cur.lastrowid)
+
+
+def update_file_description(conn: sqlite3.Connection, file: dict, description: str) -> None:
+    conn.execute("UPDATE finding_files SET description = ? WHERE id = ?", (description, file["id"]))
+
+
+def delete_file(conn: sqlite3.Connection, file: dict) -> None:
+    conn.execute("DELETE FROM finding_files WHERE id = ?", (file["id"],))
 
 
 # ---------------------------------------------------------- report versions --
@@ -802,7 +1014,7 @@ def template_as_finding_values(template: dict) -> dict:
 # ------------------------------------------------------------------ retests --
 
 def clone_report(conn: sqlite3.Connection, report_id: int, retest: bool) -> int:
-    """Copy a report with targets, findings (incl. evidence and screenshots), structure and CWE notes.
+    """Copy a report with targets, findings (incl. evidence, screenshots and files), structure and CWE notes.
 
     A retest copy links to the original (retest_of / original_finding_id), starts with a retest summary
     section and clears the findings' retest fields; a plain copy is an independent duplicate."""
@@ -819,6 +1031,7 @@ def clone_report(conn: sqlite3.Connection, report_id: int, retest: bool) -> int:
             target_map[t["id"]] = create_target(conn, new_id, {f: t[f] for f in TARGET_FIELDS})
         for f in list_findings(conn, report_id):
             values = {k: f[k] for k in FINDING_FIELDS}
+            values["origin"] = f["origin"]
             values["target_ids"] = [target_map[t["id"]] for t in f["targets"] if t["id"] in target_map]
             if retest:
                 values.update(retest_result="", retest_date=None, retest_notes="")
@@ -828,10 +1041,21 @@ def clone_report(conn: sqlite3.Connection, report_id: int, retest: bool) -> int:
             new_finding = {"id": fid, "report_id": new_id}
             for e in f["evidence"]:
                 create_evidence(conn, new_finding, {k: e[k] for k in EVIDENCE_FIELDS})
-            blobs = attachment_data(conn, [a["id"] for a in f["attachments"]])
+            for c in f["code_evidence"]:
+                create_code_evidence(conn, new_finding, {k: c[k] for k in CODE_FIELDS})
+            att_ids = [a["id"] for a in f["attachments"]]
+            blobs = attachment_data(conn, att_ids)
+            originals = attachment_originals(conn, att_ids)
             for a in f["attachments"]:
                 mime, blob = blobs[a["id"]]
-                create_attachment(conn, new_finding, {"caption": a["caption"], "mime": mime, "data": blob})
+                copy = {"caption": a["caption"], "mime": mime, "data": blob}
+                if a["id"] in originals:
+                    copy["original_mime"], copy["original_data"] = originals[a["id"]]
+                    copy["edited_at"] = a["edited_at"]
+                create_attachment(conn, new_finding, copy)
+            file_blobs = file_data(conn, [x["id"] for x in f["files"]])
+            for x in f["files"]:
+                create_file(conn, new_finding, {**{k: x[k] for k in FILE_FIELDS}, "data": file_blobs[x["id"]]})
         sections = [{k: s[k] for k in SECTION_FIELDS} for s in list_sections(conn, report_id)]
         if retest and not any(s["kind"] == "retest_summary" for s in sections):
             sections.insert(0, {"kind": "retest_summary", "title": "", "level": 1, "numbered": 1, "new_page": 0,
@@ -976,3 +1200,113 @@ def update_note(conn: sqlite3.Connection, note: dict, data: dict) -> None:
 
 def delete_note(conn: sqlite3.Connection, note: dict) -> None:
     conn.execute("DELETE FROM report_notes WHERE id = ?", (note["id"],))
+
+
+# ------------------------------------------------------- integration tokens --
+
+TOKEN_META = "id, name, scopes, created_at, last_used_at, revoked_at"  # noqa: S105 - column list
+
+
+def list_integration_tokens(conn: sqlite3.Connection) -> list[dict]:
+    return [dict(r) for r in conn.execute(
+        f"SELECT {TOKEN_META} FROM integration_tokens ORDER BY revoked_at IS NOT NULL, created_at DESC, id DESC")]
+
+
+def get_integration_token(conn: sqlite3.Connection, token_id: int) -> dict | None:
+    return _row(conn.execute(f"SELECT {TOKEN_META} FROM integration_tokens WHERE id = ?", (token_id,)).fetchone())
+
+
+def create_integration_token(conn: sqlite3.Connection, name: str, scopes: str, token_sha256: str) -> int:
+    cur = conn.execute("INSERT INTO integration_tokens (name, scopes, token_sha256) VALUES (?, ?, ?)",
+                       (name, scopes, token_sha256))
+    return int(cur.lastrowid)
+
+
+def find_integration_token(conn: sqlite3.Connection, token_sha256: str) -> dict | None:
+    """An active (not revoked) token by the SHA-256 of its value."""
+    return _row(conn.execute(
+        f"SELECT {TOKEN_META}, token_sha256 FROM integration_tokens WHERE token_sha256 = ? AND revoked_at IS NULL",
+        (token_sha256,)).fetchone())
+
+
+def mark_integration_token_used(conn: sqlite3.Connection, token_id: int) -> None:
+    """Record the last use (at most once a minute, so reads do not write on every request)."""
+    conn.execute("UPDATE integration_tokens SET last_used_at = datetime('now') WHERE id = ? AND "
+                 "(last_used_at IS NULL OR last_used_at < datetime('now', '-1 minute'))", (token_id,))
+
+
+def revoke_integration_token(conn: sqlite3.Connection, token_id: int) -> None:
+    conn.execute("UPDATE integration_tokens SET revoked_at = datetime('now') WHERE id = ? AND revoked_at IS NULL",
+                 (token_id,))
+
+
+# ------------------------------------------------------------ AI proposals --
+
+PROPOSAL_COLUMNS = ("kind", "target_finding_id", "payload", "source_tool", "source_version", "run_id", "model",
+                    "verdict", "duplicate_of_finding_id", "token_id")
+
+
+def _proposal(row: sqlite3.Row | None) -> dict | None:
+    item = _row(row)
+    if item is not None:
+        item["data"] = json.loads(item.pop("payload"))
+    return item
+
+
+def create_proposal(conn: sqlite3.Connection, report_id: int, data: dict) -> int:
+    values = {**data, "payload": json.dumps(data["data"], ensure_ascii=False, separators=(",", ":"))}
+    cur = conn.execute(
+        f"INSERT INTO ai_proposals (report_id, {', '.join(PROPOSAL_COLUMNS)}) "
+        f"VALUES (?, {_placeholders(len(PROPOSAL_COLUMNS))})",
+        [report_id] + [values.get(c) if c in ("target_finding_id", "duplicate_of_finding_id", "token_id")
+                       else values.get(c, "") for c in PROPOSAL_COLUMNS],
+    )
+    return int(cur.lastrowid)
+
+
+def get_proposal(conn: sqlite3.Connection, proposal_id: int) -> dict | None:
+    return _proposal(conn.execute("SELECT * FROM ai_proposals WHERE id = ?", (proposal_id,)).fetchone())
+
+
+def list_proposals(conn: sqlite3.Connection, report_id: int, status: str = "", limit: int = 1000) -> list[dict]:
+    sql = "SELECT * FROM ai_proposals WHERE report_id = ?"
+    params: list = [report_id]
+    if status:
+        sql += " AND status = ?"
+        params.append(status)
+    sql += " ORDER BY id LIMIT ?"
+    params.append(limit)
+    return [_proposal(r) for r in conn.execute(sql, params)]
+
+
+def recently_decided_proposals(conn: sqlite3.Connection, report_id: int, limit: int = 20) -> list[dict]:
+    return [_proposal(r) for r in conn.execute(
+        "SELECT * FROM ai_proposals WHERE report_id = ? AND status != 'pending' ORDER BY decided_at DESC, id DESC "
+        "LIMIT ?", (report_id, limit))]
+
+
+def count_proposals(conn: sqlite3.Connection, report_id: int, status: str = "pending") -> int:
+    return conn.execute("SELECT COUNT(*) FROM ai_proposals WHERE report_id = ? AND status = ?",
+                        (report_id, status)).fetchone()[0]
+
+
+def proposal_status_counts(conn: sqlite3.Connection, report_id: int) -> dict[str, int]:
+    out = {"pending": 0, "accepted": 0, "merged": 0, "rejected": 0}
+    for row in conn.execute("SELECT status, COUNT(*) AS n FROM ai_proposals WHERE report_id = ? GROUP BY status",
+                            (report_id,)):
+        out[row["status"]] = row["n"]
+    return out
+
+
+def decide_proposal(conn: sqlite3.Connection, proposal_id: int, status: str) -> bool:
+    """Close a pending proposal (accepted / merged / rejected). False when it was no longer pending."""
+    cur = conn.execute("UPDATE ai_proposals SET status = ?, decided_at = datetime('now') "
+                       "WHERE id = ? AND status = 'pending'", (status, proposal_id))
+    return cur.rowcount == 1
+
+
+def set_finding_retest(conn: sqlite3.Connection, finding: dict, result: str, retest_date: str | None,
+                       notes: str) -> None:
+    conn.execute("UPDATE findings SET retest_result = ?, retest_date = ?, retest_notes = ?, "
+                 "updated_at = datetime('now') WHERE id = ?", (result, retest_date, notes, finding["id"]))
+    touch_report(conn, finding["report_id"])

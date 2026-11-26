@@ -5,19 +5,24 @@ from __future__ import annotations
 import base64
 import binascii
 import hashlib
+import hmac
+import io
 import json
 import re
 import sqlite3
+import zipfile
 from datetime import datetime, timezone
 from typing import Any
 
-from flask import url_for
+from flask import current_app, render_template, url_for
 
 from ptreport import __version__, repo
 from ptreport.cwe import cwe_name, cwe_url
 from ptreport.db import transaction
 from ptreport.cvss_service import rating_for_score
 from ptreport.rendering import (
+    CODE_LANGUAGE_LABELS,
+    human_size,
     history_text,
     labels_for,
     cvss_rating_label,
@@ -25,9 +30,15 @@ from ptreport.rendering import (
     TARGET_KIND_LABELS,
 )
 from ptreport.validation import (
+    FILE_MAX_PER_FINDING,
     IMAGE_MAX_PER_FINDING,
     SEVERITIES,
+    check_file_quota,
+    is_sha256,
+    is_timestamp,
     validate_attachment,
+    validate_file,
+    validate_code_evidence,
     validate_cwe_note,
     validate_history_entry,
     validate_note,
@@ -35,6 +46,7 @@ from ptreport.validation import (
     validate_section,
     validate_evidence,
     validate_finding,
+    validate_origin,
     validate_report,
     validate_target,
 )
@@ -64,7 +76,7 @@ def build_context(conn: sqlite3.Connection, report_id: int, inline_images: bool 
             att["data"] = data
             att["src"] = f"data:{mime};base64,{base64.b64encode(data).decode('ascii')}"
         else:
-            att["src"] = url_for("web.attachment_file", attachment_id=att["id"])
+            att["src"] = url_for("web.attachment_file", attachment_id=att["id"], v=att["sha256"][:12])
     lang = report["language"] if report["language"] in REPORT_LABELS else "en"
     labels = labels_for(lang, repo.get_label_overrides(conn).get(lang))
     L = labels["L"]
@@ -135,6 +147,7 @@ def build_context(conn: sqlite3.Connection, report_id: int, inline_images: bool 
         "sev_labels": labels["sev"],
         "status_labels": labels["status"],
         "conf_labels": labels["conf"],
+        "code_lang_labels": CODE_LANGUAGE_LABELS[lang],
         "fingerprint": "",
         "cwe_notes": [{**n, "title_override": n["title"]} for n in repo.list_cwe_notes(conn, report_id).values()],
         "report": report,
@@ -159,6 +172,53 @@ def build_context(conn: sqlite3.Connection, report_id: int, inline_images: bool 
     return ctx
 
 
+DOWNLOAD_FORMATS = {"html": ("text/html", "html"), "md": ("text/markdown", "md"),
+                    "json": ("application/json", "json"), "pdf": ("application/pdf", "pdf"),
+                    "tex": ("application/zip", "zip")}
+
+
+def render_download(conn: sqlite3.Connection, report_id: int, fmt: str) -> tuple[bytes, str, str] | None:
+    """The file behind the web "Export" buttons and ``ptreport export``: (body, mimetype, file name).
+
+    Returns None when the report does not exist. Needs an app context (templates, LaTeX template from the DB);
+    PDF/TeX may raise :class:`ptreport.latex.LatexError`."""
+    from ptreport import latex
+
+    ctx = build_context(conn, report_id, inline_images=True)
+    if ctx is None:
+        return None
+    mimetype, ext = DOWNLOAD_FORMATS[fmt]
+    if fmt == "html":
+        css = current_app.open_resource("static/report.css").read().decode("utf-8")
+        body: bytes = render_template("export/report.html", inline_css=css, preview=False, **ctx).encode("utf-8")
+    elif fmt == "md":
+        body = to_markdown(ctx).encode("utf-8")
+    elif fmt == "json":
+        add_originals(conn, ctx)  # backups keep the untouched originals of edited screenshots
+        file_ids = [x["id"] for f in ctx["findings"] for x in f["files"]]
+        doc = to_json(ctx, file_blobs=repo.file_data(conn, file_ids))
+        # working notes travel with the backup, but are not report content (not in the fingerprint)
+        doc["notes"] = [{f: n[f] for f in repo.NOTE_FIELDS} for n in reversed(repo.list_notes(conn, report_id))]
+        body = json.dumps(doc, ensure_ascii=False, indent=2).encode("utf-8")
+    else:
+        source, files = latex.render(ctx, repo.get_latex_template(conn))
+        if fmt == "pdf":
+            body = latex.compile_pdf(source, files, volatile=ctx["generated_at"])
+        else:
+            body = tex_zip(source, files)
+    return body, mimetype, safe_filename(ctx["report"]["title"], ext)
+
+
+def tex_zip(source: str, files: dict[str, bytes]) -> bytes:
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("report.tex", source)
+        for name, data in files.items():
+            archive.writestr(name, data)
+        archive.writestr("README.txt", "Compile with: tectonic report.tex  (or: xelatex report.tex, twice)\n")
+    return buffer.getvalue()
+
+
 def safe_filename(title: str, ext: str) -> str:
     stem = re.sub(r"[^A-Za-z0-9._-]+", "_", title).strip("._-")[:80] or "report"
     return f"{stem}.{ext}"
@@ -170,6 +230,9 @@ def _fence(body: str, lang: str = "") -> str:
     longest = max((len(m) for m in re.findall(r"`+", body)), default=0)
     fence = "`" * max(3, longest + 1)
     return f"{fence}{lang}\n{body}\n{fence}"
+
+
+MD_CODE_LANG = {"c": "c", "cpp": "cpp", "asm": "asm", "pseudo": "c", "java": "java", "python": "python"}
 
 
 def _md_escape_inline(text: str) -> str:
@@ -290,6 +353,26 @@ def to_markdown(ctx: dict) -> str:
                 out.extend([f"*{L['request']}:*", "", _fence(e["request"], "http"), ""])
                 if e["response"]:
                     out.extend([f"*{L['response']}:*", "", _fence(e["response"], "http"), ""])
+        if f.get("code_evidence"):
+            out.extend([f"{sub} {L['code_evidence']}", ""])
+            for c in f["code_evidence"]:
+                if c["title"]:
+                    out.extend([f"**{_md_escape_inline(c['title'])}**", ""])
+                location = c["location"].replace("`", "'")
+                where = f"*{L['code_location']}:* `{location}` · " if location else ""
+                out.extend([where + ctx["code_lang_labels"][c["language"]], "",
+                            _fence(c["code"], MD_CODE_LANG.get(c["language"], "")), ""])
+                if c["note"]:
+                    out.extend([c["note"], ""])
+        if f["files"]:
+            out.extend([f"{sub} {L['attached_files']}", "",
+                        f"| {L['file_name']} | {L['file_size']} | {L['sha256']} |", "|---|---:|---|"])
+            for x in f["files"]:
+                name = _md_escape_inline(x["filename"])
+                if x["description"]:
+                    name += f"<br>*{_md_escape_inline(x['description'])}*"
+                out.append(f"| {name} | {human_size(x['size'])} | `{x['sha256']}` |")
+            out.append("")
         if f["remediation"]:
             out.extend([f"{sub} {L['remediation']}", "", f["remediation"], ""])
         if f["refs"]:
@@ -352,7 +435,51 @@ def to_markdown(ctx: dict) -> str:
     return "\n".join(out).rstrip() + "\n"
 
 
-def to_json(ctx: dict) -> dict:
+def add_originals(conn: sqlite3.Connection, ctx: dict) -> None:
+    """Attach the untouched originals of edited screenshots, so the JSON backup can restore them later."""
+    attachments = [a for f in ctx["findings"] for a in f["attachments"] if a["edited"]]
+    originals = repo.attachment_originals(conn, [a["id"] for a in attachments])
+    for a in attachments:
+        if a["id"] in originals:
+            a["original"] = originals[a["id"]]
+
+
+def _attachment_json(a: dict) -> dict:
+    out = {"caption": a["caption"], "mime": a["mime"], "data_base64": base64.b64encode(a["data"]).decode("ascii")}
+    if a.get("original"):
+        mime, data = a["original"]
+        out["original"] = {"mime": mime, "data_base64": base64.b64encode(data).decode("ascii"),
+                           "edited_at": a["edited_at"]}
+    return out
+
+
+def _import_original(original: Any) -> tuple[dict, dict]:
+    """The untouched original of an edited screenshot in a JSON backup (same checks as any upload)."""
+    if not isinstance(original, dict) or not isinstance(original.get("data_base64"), str):
+        return {}, {"file": "must be an object with data_base64"}
+    try:
+        raw = base64.b64decode(original["data_base64"], validate=True)
+    except (binascii.Error, ValueError):
+        return {}, {"file": "data_base64 is not valid base64"}
+    clean, errors = validate_attachment("", raw)
+    if errors:
+        return {}, errors
+    edited_at = original.get("edited_at")
+    if not (isinstance(edited_at, str) and re.fullmatch(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}", edited_at)):
+        edited_at = None
+    return {"original_mime": clean["mime"], "original_data": clean["data"], "edited_at": edited_at}, {}
+
+
+def _file_json(x: dict, blobs: dict[int, bytes] | None) -> dict:
+    out = {f: x[f] for f in repo.FILE_FIELDS}
+    if blobs is not None:
+        out["data_base64"] = base64.b64encode(blobs[x["id"]]).decode("ascii")
+    return out
+
+
+def to_json(ctx: dict, file_blobs: dict[int, bytes] | None = None) -> dict:
+    """The report as a JSON document. Files carry their bytes (base64) only when ``file_blobs`` is given;
+    without it (the content fingerprint) their SHA-256 stands for the content."""
     r = ctx["report"]
     return {
         "format": EXPORT_FORMAT,
@@ -365,14 +492,13 @@ def to_json(ctx: dict) -> dict:
                 **{f: fd[f] for f in repo.FINDING_FIELDS if f not in ("severity", "cvss_score")},
                 "severity": fd["severity"],
                 "position": fd["position"],
+                "origin": fd.get("origin", ""),
                 "targets": [t["id"] for t in fd["targets"]],
                 "evidence": [{f: e[f] for f in repo.EVIDENCE_FIELDS} for e in fd["evidence"]],
                 "history": [{f: h[f] for f in repo.HISTORY_FIELDS} for h in fd["history"]],
-                "attachments": [
-                    {"caption": a["caption"], "mime": a["mime"],
-                     "data_base64": base64.b64encode(a["data"]).decode("ascii")}
-                    for a in fd["attachments"]
-                ],
+                "attachments": [_attachment_json(a) for a in fd["attachments"]],
+                "files": [_file_json(x, file_blobs) for x in fd["files"]],
+                "code_evidence": [{f: c[f] for f in repo.CODE_FIELDS} for c in fd.get("code_evidence", [])],
             }
             for fd in ctx["findings"]
         ],
@@ -395,6 +521,46 @@ def _collect(prefix: str, errors: dict, sink: list[str]) -> None:
 
 
 MAX_IMPORT_ITEMS = 5000
+
+
+def _import_files(i: int, files_in: Any) -> tuple[list[dict], list[str]]:
+    """Evidence files of one imported finding: same validation as an upload, and the bytes must match the
+    SHA-256 (and size) recorded in the export, so a corrupted or altered file is rejected."""
+    files: list[dict] = []
+    problems: list[str] = []
+    files_in = files_in or []
+    if not isinstance(files_in, list) or len(files_in) > FILE_MAX_PER_FINDING:
+        return [], [f"finding #{i}: files must be a list of at most {FILE_MAX_PER_FINDING} files"]
+    for j, x in enumerate(files_in, 1):
+        where = f"finding #{i} file #{j}"
+        if not isinstance(x, dict) or not isinstance(x.get("data_base64"), str):
+            problems.append(f"{where}: must be an object with data_base64")
+            continue
+        if not is_sha256(x.get("sha256")):
+            problems.append(f"{where}: sha256 must be 64 lowercase hex characters")
+            continue
+        try:
+            raw = base64.b64decode(x["data_base64"], validate=True)
+        except (binascii.Error, ValueError):
+            problems.append(f"{where}: data_base64 is not valid base64")
+            continue
+        clean, errs = validate_file(x.get("filename"), x.get("description", ""), raw)
+        if errs:
+            _collect(where, errs, problems)
+            continue
+        if not hmac.compare_digest(clean["sha256"], x["sha256"]):
+            problems.append(f"{where} ({clean['filename']}): SHA-256 does not match the file content")
+            continue
+        if "size" in x and x["size"] != clean["size"]:
+            problems.append(f"{where} ({clean['filename']}): size does not match the file content")
+            continue
+        if is_timestamp(x.get("uploaded_at")):
+            clean["uploaded_at"] = x["uploaded_at"]
+        files.append(clean)
+    quota = check_file_quota(0, 0, [x["size"] for x in files])
+    if quota:
+        problems.append(f"finding #{i}: {quota}")
+    return files, problems
 
 
 def import_json(conn: sqlite3.Connection, payload: Any) -> int:
@@ -428,7 +594,7 @@ def import_json(conn: sqlite3.Connection, payload: Any) -> int:
         targets.append((ref, clean))
     known_refs = {ref for ref, _ in targets if ref is not None}
 
-    findings: list[tuple[dict, list, list[dict], list[dict], list[dict]]] = []
+    findings: list[tuple[dict, list, list[dict], list[dict], list[dict], list[dict], list[dict]]] = []
     seen_external_ids: set[str] = set()
     for i, f in enumerate(findings_in, 1):
         if not isinstance(f, dict):
@@ -442,6 +608,9 @@ def import_json(conn: sqlite3.Connection, payload: Any) -> int:
             refs = []
         clean, errs = validate_finding(f, target_ids_raw=[])
         _collect(f"finding #{i}", errs, problems)
+        clean["origin"], origin_error = validate_origin(f.get("origin"))
+        if origin_error:
+            problems.append(f"finding #{i}: origin: {origin_error}")
         ext = clean.get("external_id", "")
         if ext and ext.lower() in seen_external_ids:
             problems.append(f"finding #{i}: duplicate finding ID {ext}")
@@ -474,7 +643,26 @@ def import_json(conn: sqlite3.Connection, payload: Any) -> int:
                 continue
             att_clean, att_errs = validate_attachment(a.get("caption", ""), raw)
             _collect(f"finding #{i} screenshot #{j}", att_errs, problems)
+            original = a.get("original")
+            if original is not None:
+                orig_clean, orig_errs = _import_original(original)
+                _collect(f"finding #{i} screenshot #{j} original", orig_errs, problems)
+                att_clean.update(orig_clean)
             attachments.append(att_clean)
+        code = []
+        code_in = f.get("code_evidence") or []
+        if not isinstance(code_in, list) or len(code_in) > MAX_IMPORT_ITEMS:
+            problems.append(f"finding #{i}: code_evidence must be a list")
+            code_in = []
+        for j, c in enumerate(code_in, 1):
+            if not isinstance(c, dict):
+                problems.append(f"finding #{i} code evidence #{j}: must be an object")
+                continue
+            c_clean, c_errs = validate_code_evidence(c)
+            _collect(f"finding #{i} code evidence #{j}", c_errs, problems)
+            code.append(c_clean)
+        files, file_problems = _import_files(i, f.get("files"))
+        problems.extend(file_problems)
         history = []
         hist_in = f.get("history") or []
         if not isinstance(hist_in, list) or len(hist_in) > MAX_IMPORT_ITEMS:
@@ -487,7 +675,7 @@ def import_json(conn: sqlite3.Connection, payload: Any) -> int:
             h_clean, h_errs = validate_history_entry(h)
             _collect(f"finding #{i} history #{j}", h_errs, problems)
             history.append(h_clean)
-        findings.append((clean, refs, evidence, attachments, history))
+        findings.append((clean, refs, evidence, attachments, files, history, code))
 
     versions = []
     versions_in = payload.get("versions") or []
@@ -553,14 +741,18 @@ def import_json(conn: sqlite3.Connection, payload: Any) -> int:
             new_id = repo.create_target(conn, report_id, data)
             if ref is not None:
                 ref_map[ref] = new_id
-        for clean, refs, evidence, attachments, history in findings:
+        for clean, refs, evidence, attachments, files, history, code in findings:
             clean["target_ids"] = sorted({ref_map[r] for r in refs})
             finding_id = repo.create_finding(conn, report_id, clean)
             finding = {"id": finding_id, "report_id": report_id}
             for ev in evidence:
                 repo.create_evidence(conn, finding, ev)
+            for item in code:
+                repo.create_code_evidence(conn, finding, item)
             for att in attachments:
                 repo.create_attachment(conn, finding, att)
+            for item in files:
+                repo.create_file(conn, finding, item)
             for entry in history:
                 repo.create_history_entry(conn, finding, entry)
         for ver in versions:

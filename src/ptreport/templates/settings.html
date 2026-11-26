@@ -108,9 +108,48 @@
     {% if custom_latex %}<div>{{ post_button(url_for('web.settings_latex_reset'), 'Use the default template', 'btn btn-danger', 'Remove the custom template and go back to the default?') }}</div>{% endif %}
   </section>
 
+  <section class="panel stack" id="ai-assistant" aria-labelledby="ai-h"
+           data-ai-settings data-models-url="{{ url_for('web.settings_ai_models') }}" data-test-url="{{ url_for('web.settings_ai_test') }}">
+    <h2 id="ai-h">AI assistant (local)</h2>
+    <p class="prose">Optional help with writing findings: draft a text from the title and CWE, improve the wording, translate between Polish and English or shorten it. It uses a <strong>local <a href="https://ollama.com" target="_blank" rel="noopener noreferrer">Ollama</a></strong> server: only addresses on this machine are accepted, so nothing leaves it. Suggestions are never saved without your click.</p>
+    {% if ai_errors %}<p class="field-error" role="alert">{{ icon('alert') }}<span>Please fix the highlighted fields.</span></p>{% endif %}
+    <form method="post" action="{{ url_for('web.settings_ai') }}" class="stack" novalidate data-validate>
+      <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+      <label class="check check-wide"><input type="checkbox" name="enabled" value="1"{% if ai_values.get('enabled') %} checked{% endif %}>
+        <span class="check-text"><strong>Enable the writing assistant</strong><span class="muted small">Shows “Assist” menus next to Description, Impact, Technical details and Remediation on the finding form.</span></span></label>
+      <div class="grid-2">
+        {{ input('url', 'Ollama URL', ai_values, ai_errors, required=True, maxlength=200, mono=True, prefix='ai-',
+                 placeholder='http://127.0.0.1:11434', hint='http(s) on 127.0.0.1, ::1 or localhost only.') }}
+        <div class="field">
+          <label for="f-ai-model">Model</label>
+          <div class="input-row">
+            <input class="input is-mono" id="f-ai-model" name="model" value="{{ ai_values.get('model') or '' }}" maxlength="100"
+              pattern="[A-Za-z0-9][A-Za-z0-9._:/+\-]{0,99}" title="e.g. qwen2.5:3b" placeholder="qwen2.5:3b" list="ai-model-list" autocomplete="off"
+              {%- if ai_errors.get('model') %} aria-invalid="true" aria-describedby="ai-model-error"{% endif %}>
+            <button class="btn" type="button" data-ai-load hidden>{{ icon('download') }}Load models</button>
+          </div>
+          <datalist id="ai-model-list"></datalist>
+          <p class="hint" data-ai-models-hint>Models installed in Ollama (<code>ollama list</code>). Small models (3–8B) are fast enough on a laptop GPU.</p>
+          {% if ai_errors.get('model') %}<p class="field-error" id="ai-model-error">{{ icon('alert') }}<span>{{ ai_errors['model'] }}</span></p>{% endif %}
+        </div>
+      </div>
+      <p class="ai-result" data-ai-result role="status" aria-live="polite" hidden></p>
+      <div class="cluster">
+        <button class="btn btn-primary" type="submit">Save assistant settings</button>
+        <button class="btn" type="button" data-ai-test hidden>{{ icon('check-circle') }}Test connection</button>
+      </div>
+    </form>
+  </section>
+
   <section class="panel stack" aria-labelledby="api-h">
     <h2 id="api-h">API access (Burp extension)</h2>
     <p class="prose">The Burp extension talks to <code>{{ api_base }}</code> and authenticates with this bearer token.</p>
+    <ol class="prose steps">
+      <li><a href="{{ url_for('web.burp_extension_download') }}" download>Download the Burp extension</a> (<code>ptreport-burp.jar</code>, Burp 2023+ with Java 17).</li>
+      <li>In Burp: <em>Extensions → Installed → Add</em>, type <em>Java</em>, select the file.</li>
+      <li>Open the <em>ptreport</em> tab in Burp, paste the token below and click <em>Test connection</em>.</li>
+      <li>Right-click any request or response and choose <em>Send to ptreport</em>.</li>
+    </ol>
     <div class="token-row">
       <input id="api-token" class="input is-mono" type="password" value="{{ api_token }}" readonly aria-label="API token" autocomplete="off">
       <button class="btn" type="button" data-toggle-secret="api-token">Show</button>
@@ -119,6 +158,55 @@
     <p class="hint">You can also print it with <code>ptreport --show-api-token</code>.</p>
     <div>{{ post_button(url_for('web.settings_regenerate_token'), 'Generate new token', 'btn btn-danger', 'Generate a new token? The old one stops working immediately.') }}</div>
   </section>
+  <section class="panel stack" id="integrations" aria-labelledby="int-h">
+    <h2 id="int-h">Integrations (AI agents)</h2>
+    <p class="prose">Tokens for AI agents and other tools (pentest-ai, Decepticon via MCP, reverse-engineering agents, CI jobs). A token with <strong>read</strong> can list reports, their findings, the scope, CWE and templates; <strong>propose</strong> can only send proposals to a report's <em>AI queue</em>, where you accept or reject them. It can never change a report directly. For a local agent client, <code>ptreport mcp</code> needs no token at all.</p>
+    {% if new_token %}
+      <div class="token-new" role="status">
+        <p><strong>{{ icon('check-circle') }} Token “{{ new_token.name }}” created ({{ new_token.scopes|replace(',', ', ') }}).</strong> Copy it now: it is stored only as a SHA-256 hash and cannot be shown again.</p>
+        <div class="token-row">
+          <input id="new-int-token" class="input is-mono" type="text" value="{{ new_token.token }}" readonly aria-label="New integration token" autocomplete="off">
+          <button class="btn" type="button" data-copy="new-int-token">{{ icon('copy') }}Copy</button>
+        </div>
+        <p class="hint">Use it as <code>Authorization: Bearer &lt;token&gt;</code> against <code>{{ api_base }}</code>, e.g. <code>POST /reports/&lt;id&gt;/proposals</code>.</p>
+      </div>
+    {% endif %}
+    {% if integration_tokens %}
+      <div class="table-wrap" tabindex="0" role="region" aria-label="Integration tokens, scrolls sideways">
+        <table class="table" aria-label="Integration tokens">
+          <thead><tr><th scope="col">Name</th><th scope="col">Scopes</th><th scope="col">Created (UTC)</th><th scope="col">Last used (UTC)</th><th scope="col">Status</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
+          <tbody>
+            {% for t in integration_tokens %}
+              <tr{% if t.revoked_at %} class="is-revoked"{% endif %}>
+                <td class="col-title">{{ icon('key') }} {{ t.name }}</td>
+                <td><span class="scope-chips">{% for sc in t.scopes.split(',') %}<span class="chip">{{ sc }}</span>{% endfor %}</span></td>
+                <td class="mono small">{{ t.created_at }}</td>
+                <td class="mono small">{{ t.last_used_at or '—' }}</td>
+                <td>{% if t.revoked_at %}<span class="muted">Revoked {{ t.revoked_at }}</span>{% else %}<span class="status status-fixed">{{ icon('check-circle') }}<span>Active</span></span>{% endif %}</td>
+                <td class="col-actions">{% if not t.revoked_at %}{{ post_button(url_for('web.settings_integration_revoke', token_id=t.id), 'Revoke', 'btn btn-sm btn-danger', 'Revoke the token "' ~ t.name ~ '"? Tools using it stop working immediately.', icon_name='trash') }}{% endif %}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
+    <form method="post" action="{{ url_for('web.settings_integration_new') }}" class="stack" novalidate data-validate>
+      <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+      <h3>New token</h3>
+      <div class="grid-2">
+        {{ input('name', 'Name', token_values, token_errors, required=True, maxlength=100, placeholder='pentest-ai on the jump box', prefix='int-', hint='Where the token is used, so you know what to revoke later.') }}
+        <fieldset class="field">
+          <legend class="label">Scopes <span class="req" aria-hidden="true">*</span></legend>
+          <div class="cluster">
+            <label class="check check-inline"><input type="checkbox" name="scopes" value="read"{% if 'read' in token_values.get('scopes', []) %} checked{% endif %}><span class="check-text">read</span></label>
+            <label class="check check-inline"><input type="checkbox" name="scopes" value="propose"{% if 'propose' in token_values.get('scopes', []) %} checked{% endif %}><span class="check-text">propose</span></label>
+          </div>
+          {% if token_errors.get('scopes') %}<p class="field-error" id="int-scopes-error">{{ icon('alert') }}<span>{{ token_errors['scopes'] }}</span></p>{% endif %}
+        </fieldset>
+      </div>
+      <div class="cluster"><button class="btn btn-primary" type="submit">{{ icon('key') }}Create token</button></div>
+    </form>
+  </section>
   <section class="panel stack" aria-labelledby="storage-h">
     <h2 id="storage-h">Storage</h2>
     <p class="prose">Database and secrets: <code>{{ data_dir }}</code></p>
@@ -126,3 +214,4 @@
   </section>
 </div>
 {% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='ai.js') }}"></script>{% endblock %}

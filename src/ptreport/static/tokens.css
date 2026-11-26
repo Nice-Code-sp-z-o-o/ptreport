@@ -61,6 +61,8 @@
   --c-st-fixed: #6fd0a0;
   --c-st-accepted: #b9a8ee;
   --c-st-false: #93a1ac;
+  --c-st-partial: #ebcb4f;
+  --c-st-notfixed: #ff8080;
 
   --vec-0-bg: #0f1418;
   --vec-0-ink: #93a1ac;
@@ -160,6 +162,8 @@
   --c-st-fixed: #1b7a4f;
   --c-st-accepted: #5b3fb0;
   --c-st-false: #4a5762;
+  --c-st-partial: #7a5c00;
+  --c-st-notfixed: #b3213a;
 
   --vec-0-bg: #ffffff;
   --vec-0-ink: #4a5762;

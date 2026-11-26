@@ -22,9 +22,29 @@
   </div>
 {%- endmacro %}
 
-{% macro textarea(name, label, values, errors, rows=6, required=False, hint=None, mono=False, maxlength=200000, prefix="") -%}
+{# Writing assistant menu for a text field (finding form, only rendered when the assistant is enabled). #}
+{% macro assist_menu(name, label, lang) -%}
+  {%- set langs = [('pl', 'Polish'), ('en', 'English')] if lang == 'pl' else [('en', 'English'), ('pl', 'Polish')] -%}
+  <details class="dropdown ai-menu" data-ai-menu hidden>
+    <summary class="btn btn-sm btn-ghost" aria-label="Writing assistant for {{ label }}">{{ icon('sparkle') }}Assist{{ icon('chevron-down') }}</summary>
+    <div class="dropdown-menu align-start" role="group" aria-label="Writing assistant for {{ label }}">
+      <button class="menu-item" type="button" data-ai-action="draft" data-ai-field="{{ name }}">{{ icon('edit') }}Draft from title/CWE</button>
+      <button class="menu-item" type="button" data-ai-action="improve" data-ai-field="{{ name }}">{{ icon('check') }}Improve wording</button>
+      <div class="menu-sep"></div>
+      {% for code, lang_name in langs %}
+      <button class="menu-item" type="button" data-ai-action="translate_{{ code }}" data-ai-field="{{ name }}">{{ icon('translate') }}Translate to {{ lang_name }}{% if code == lang %} <span class="muted small">(report)</span>{% endif %}</button>
+      {% endfor %}
+      <div class="menu-sep"></div>
+      <button class="menu-item" type="button" data-ai-action="shorten" data-ai-field="{{ name }}">{{ icon('shorten') }}Shorten</button>
+    </div>
+  </details>
+{%- endmacro %}
+
+{% macro textarea(name, label, values, errors, rows=6, required=False, hint=None, mono=False, maxlength=200000, prefix="", assist=None) -%}
   <div class="field">
+    {% if assist %}<div class="field-head">{% endif %}
     <label for="f-{{ prefix }}{{ name }}">{{ label }}{% if required %} <span class="req" aria-hidden="true">*</span>{% endif %}</label>
+    {%- if assist %}{{ assist_menu(name, label, assist) }}</div>{% endif %}
     <textarea class="textarea{% if mono %} is-mono{% endif %}" id="f-{{ prefix }}{{ name }}" name="{{ name }}" rows="{{ rows }}" maxlength="{{ maxlength }}"
       {%- if required %} required{% endif %}
       {%- if errors.get(name) %} aria-invalid="true" aria-describedby="{{ prefix }}{{ name }}-error"{% endif %}>{{ values.get(name) or '' }}</textarea>
@@ -64,7 +84,7 @@
 {%- endmacro %}
 
 {% macro status_label(status) -%}
-  {%- set icons = {'open': 'circle', 'fixed': 'check-circle', 'risk_accepted': 'shield', 'false_positive': 'slash-circle'} -%}
+  {%- set icons = {'open': 'circle', 'partially_fixed': 'circle-half', 'not_fixed': 'x-circle', 'fixed': 'check-circle', 'risk_accepted': 'shield', 'wont_fix': 'minus-circle', 'false_positive': 'slash-circle', 'not_a_bug': 'slash-circle', 'cannot_verify': 'help-circle'} -%}
   <span class="status status-{{ status }}">{{ icon(icons.get(status, 'circle')) }}<span>{{ STATUS_LABELS['en'][status] }}</span></span>
 {%- endmacro %}
 

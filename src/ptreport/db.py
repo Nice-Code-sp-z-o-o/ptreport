@@ -82,7 +82,7 @@ MIGRATIONS: list[str] = [
     );
     CREATE INDEX idx_http_evidence_finding ON http_evidence(finding_id, position);
     """,
-    # 2: custom finding id (e.g. LT-0002); severity_manual is unused since severity became always manual
+    # 2: custom finding id (e.g. SEC-0002); severity_manual is unused since severity became always manual
     #    (kept because DROP COLUMN needs SQLite 3.35+)
     """
     ALTER TABLE findings ADD COLUMN external_id TEXT NOT NULL DEFAULT '';
@@ -236,6 +236,94 @@ MIGRATIONS: list[str] = [
         updated_at TEXT    NOT NULL DEFAULT (datetime('now'))
     );
     CREATE INDEX idx_report_notes_report ON report_notes(report_id, pinned, updated_at);
+    """,
+    # 12: evidence files of any type per finding (pcap, logs, HAR ...), with a server-side SHA-256
+    """
+    CREATE TABLE IF NOT EXISTS finding_files (
+        id          INTEGER PRIMARY KEY,
+        finding_id  INTEGER NOT NULL REFERENCES findings(id) ON DELETE CASCADE,
+        position    INTEGER NOT NULL,
+        filename    TEXT    NOT NULL,
+        description TEXT    NOT NULL DEFAULT '',
+        mime        TEXT    NOT NULL,
+        size        INTEGER NOT NULL,
+        sha256      TEXT    NOT NULL,
+        data        BLOB    NOT NULL,
+        uploaded_at TEXT    NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_finding_files_finding ON finding_files(finding_id, position);
+    """,
+    # 13: screenshot editor - the untouched original of an edited screenshot (NULL = never edited)
+    """
+    ALTER TABLE attachments ADD COLUMN original_mime TEXT;
+    ALTER TABLE attachments ADD COLUMN original_data BLOB;
+    ALTER TABLE attachments ADD COLUMN original_sha256 TEXT;
+    ALTER TABLE attachments ADD COLUMN edited_at TEXT;
+    """,
+    # 14: evidence files again, for databases that ran the screenshot-editor build first: there 12 was an empty
+    # placeholder, so they are at 13 without the table. A no-op where 12 already created it.
+    """
+    CREATE TABLE IF NOT EXISTS finding_files (
+        id          INTEGER PRIMARY KEY,
+        finding_id  INTEGER NOT NULL REFERENCES findings(id) ON DELETE CASCADE,
+        position    INTEGER NOT NULL,
+        filename    TEXT    NOT NULL,
+        description TEXT    NOT NULL DEFAULT '',
+        mime        TEXT    NOT NULL,
+        size        INTEGER NOT NULL,
+        sha256      TEXT    NOT NULL,
+        data        BLOB    NOT NULL,
+        uploaded_at TEXT    NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_finding_files_finding ON finding_files(finding_id, position);
+    """,
+    # 15: AI agent integrations - scoped integration tokens, the intake queue of proposals (nothing an agent sends
+    # reaches a report before a human accepts it), provenance of accepted findings, code evidence (reverse
+    # engineering, source review)
+    """
+    CREATE TABLE integration_tokens (
+        id           INTEGER PRIMARY KEY,
+        name         TEXT    NOT NULL,
+        token_sha256 TEXT    NOT NULL UNIQUE,
+        scopes       TEXT    NOT NULL DEFAULT 'read',
+        created_at   TEXT    NOT NULL DEFAULT (datetime('now')),
+        last_used_at TEXT,
+        revoked_at   TEXT
+    );
+
+    CREATE TABLE ai_proposals (
+        id                      INTEGER PRIMARY KEY,
+        report_id               INTEGER NOT NULL REFERENCES reports(id) ON DELETE CASCADE,
+        kind                    TEXT    NOT NULL,
+        target_finding_id       INTEGER REFERENCES findings(id) ON DELETE SET NULL,
+        payload                 TEXT    NOT NULL,
+        source_tool             TEXT    NOT NULL DEFAULT '',
+        source_version          TEXT    NOT NULL DEFAULT '',
+        run_id                  TEXT    NOT NULL DEFAULT '',
+        model                   TEXT    NOT NULL DEFAULT '',
+        verdict                 TEXT    NOT NULL DEFAULT '',
+        status                  TEXT    NOT NULL DEFAULT 'pending',
+        duplicate_of_finding_id INTEGER REFERENCES findings(id) ON DELETE SET NULL,
+        created_at              TEXT    NOT NULL DEFAULT (datetime('now')),
+        decided_at              TEXT,
+        token_id                INTEGER REFERENCES integration_tokens(id) ON DELETE SET NULL
+    );
+    CREATE INDEX idx_ai_proposals_report_status ON ai_proposals(report_id, status);
+
+    ALTER TABLE findings ADD COLUMN origin TEXT NOT NULL DEFAULT '';
+
+    CREATE TABLE code_evidence (
+        id         INTEGER PRIMARY KEY,
+        finding_id INTEGER NOT NULL REFERENCES findings(id) ON DELETE CASCADE,
+        position   INTEGER NOT NULL,
+        title      TEXT    NOT NULL DEFAULT '',
+        location   TEXT    NOT NULL DEFAULT '',
+        language   TEXT    NOT NULL DEFAULT 'text',
+        code       TEXT    NOT NULL,
+        note       TEXT    NOT NULL DEFAULT '',
+        created_at TEXT    NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX idx_code_evidence_finding ON code_evidence(finding_id, position);
     """,
 ]
 

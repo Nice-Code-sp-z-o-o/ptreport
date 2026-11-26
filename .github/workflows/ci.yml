@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Tests (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install
+        run: |
+          python -m pip install --require-hashes -r requirements.lock
+          python -m pip install --no-deps -e .
+          python -m pip install pytest
+      - name: Tests
+        run: python -m pytest
+
+  pdf:
+    name: Install script + PDF tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: install.sh (venv, Tectonic, LaTeX warm-up)
+        run: ./install.sh
+      - name: Tests with a real LaTeX engine
+        run: |
+          VENV="$HOME/.local/share/ptreport/venv"
+          "$VENV/bin/python" -m pip install pytest
+          PTREPORT_TECTONIC="$HOME/.local/share/ptreport/tectonic/tectonic" "$VENV/bin/python" -m pytest -rs
+
+  lint:
+    name: Ruff
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: python -m pip install ruff
+      - run: ruff check src tests
+
+  burp:
+    name: Burp extension
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Build
+        working-directory: burp-extension
+        run: ./build.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ptreport-burp
+          path: burp-extension/dist/ptreport-burp.jar

@@ -7,7 +7,9 @@ when it is non-empty ``clean_data`` must not be persisted.
 
 from __future__ import annotations
 
+import hashlib
 import re
+import unicodedata
 from collections.abc import Mapping
 from datetime import date
 from typing import Any
@@ -18,10 +20,21 @@ from ptreport.cvss_service import CvssInvalid, score_vector
 
 SEVERITIES = ("critical", "high", "medium", "low", "info")
 SEVERITY_RANK = {s: i for i, s in enumerate(SEVERITIES)}
-FINDING_STATUSES = ("open", "fixed", "risk_accepted", "false_positive")
+FINDING_STATUSES = (
+    "open", "partially_fixed", "not_fixed", "fixed", "risk_accepted", "wont_fix", "false_positive", "not_a_bug",
+    "cannot_verify",
+)
+# Statuses that still need work: counted as "open" in report lists, summaries and the CLI.
+OPEN_STATUSES = ("open", "partially_fixed", "not_fixed")
 CONFIDENCE_LEVELS = ("certain", "probable", "unknown")
 RETEST_RESULTS = ("fixed", "partially_fixed", "not_fixed", "not_tested")
-TARGET_KINDS = ("web", "api", "host", "network", "mobile", "cloud", "wireless", "other")
+TARGET_KINDS = ("web", "api", "host", "network", "mobile", "cloud", "wireless", "binary", "firmware", "other")
+# Code evidence (reverse engineering, source review): languages a snippet can be labelled with.
+CODE_LANGUAGES = ("c", "cpp", "asm", "pseudo", "java", "python", "text")
+CODE_MAX = 200_000
+CODE_NOTE_MAX = 20_000
+EVIDENCE_SOURCES = ("manual", "burp", "import", "ai")
+INTEGRATION_SCOPES = ("read", "propose")
 LANGUAGES = ("en", "pl")
 
 SHORT = 300
@@ -29,6 +42,12 @@ LONG = 200_000
 HTTP_MESSAGE_MAX = 5_000_000
 IMAGE_MAX_BYTES = 10 * 1024 * 1024
 IMAGE_MAX_PER_FINDING = 50
+# Evidence files (any type). Stored in SQLite, so the limits keep the database and JSON exports manageable.
+FILE_MAX_BYTES = 25 * 1024 * 1024          # per file
+FILE_MAX_TOTAL_PER_FINDING = 100 * 1024 * 1024
+FILE_MAX_PER_FINDING = 50
+FILENAME_MAX = 180
+IMAGE_MAX_SIDE = 20_000  # pixels; an edited screenshot can never be larger than its original either
 
 _CONTROL_CHARS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 _PREFIX_RE = re.compile(r"^[A-Z][A-Z0-9]{0,9}$")
@@ -237,6 +256,28 @@ def validate_settings(data: Mapping[str, Any]) -> tuple[dict, dict]:
     return v.clean, v.errors
 
 
+def validate_ai_settings(data: Mapping[str, Any]) -> tuple[dict, dict]:
+    """Ollama assistant settings. The URL may only point at this machine (SSRF guard)."""
+    from ptreport import ai
+
+    v = Validator(data)
+    enabled = data.get("enabled") in ("1", "on", "true", True)
+    v.clean["enabled"] = enabled
+    url = ai.normalise_url(v.text("url", required=True, max_len=ai.MAX_URL_LEN, label="Ollama URL"))
+    if "url" not in v.errors:
+        problem = ai.url_problem(url)
+        if problem:
+            v.errors["url"] = problem
+        v.clean["url"] = url
+    model = v.text("model", max_len=ai.MAX_MODEL_LEN, label="Model")
+    if "model" not in v.errors:
+        if model or enabled:
+            problem = ai.model_problem(model)
+            if problem:
+                v.errors["model"] = problem if model else "Choose a model to enable the assistant."
+    return v.clean, v.errors
+
+
 def validate_target(data: Mapping[str, Any]) -> tuple[dict, dict]:
     v = Validator(data)
     v.text("name", required=True, max_len=200, label="Target name")
@@ -316,9 +357,52 @@ def validate_evidence(data: Mapping[str, Any]) -> tuple[dict, dict]:
     request = v.text("request", max_len=HTTP_MESSAGE_MAX, multiline=True, strip=False,
                      label="HTTP request")
     v.text("response", max_len=HTTP_MESSAGE_MAX, multiline=True, strip=False, label="HTTP response")
-    v.choice("source", ("manual", "burp", "import"), "manual")
+    v.choice("source", EVIDENCE_SOURCES, "manual")
     if not request.strip() and "request" not in v.errors:
         v.errors["request"] = "HTTP request is required."
+    return v.clean, v.errors
+
+
+def validate_code_evidence(data: Mapping[str, Any]) -> tuple[dict, dict]:
+    """A code snippet as evidence: decompiled function, disassembly, source excerpt. Always shown as text."""
+    v = Validator(data)
+    v.text("title", max_len=SHORT, label="Title")
+    v.text("location", max_len=SHORT, label="Location (file / function / address)")
+    v.choice("language", CODE_LANGUAGES, "text", label="Language")
+    code = v.text("code", max_len=CODE_MAX, multiline=True, strip=False, label="Code")
+    if "code" not in v.errors:
+        v.clean["code"] = code.strip("\n").rstrip()
+        if not v.clean["code"].strip():
+            v.errors["code"] = "Code is required."
+    v.text("note", max_len=CODE_NOTE_MAX, multiline=True, label="Note")
+    return v.clean, v.errors
+
+
+def validate_origin(value: Any) -> tuple[str, str | None]:
+    """Provenance of a finding added from an AI proposal (single line, at most 300 characters)."""
+    v = Validator({"origin": value})
+    v.text("origin", max_len=SHORT, label="Origin")
+    return v.clean.get("origin", ""), v.errors.get("origin")
+
+
+def validate_integration_token(data: Mapping[str, Any]) -> tuple[dict, dict]:
+    """Settings -> Integrations: a name and at least one scope (read, propose)."""
+    v = Validator(data)
+    name = v.text("name", required=True, max_len=100, label="Name")
+    if name and "name" not in v.errors and not any(ch.isalnum() for ch in name):
+        v.errors["name"] = "Name must contain letters or digits."
+    raw = data.getlist("scopes") if hasattr(data, "getlist") else data.get("scopes")
+    if isinstance(raw, str):
+        raw = [s.strip() for s in raw.split(",")]
+    if not isinstance(raw, (list, tuple)) or any(not isinstance(s, str) for s in raw):
+        v.errors["scopes"] = "Scopes must be a list."
+        raw = []
+    scopes = [s for s in INTEGRATION_SCOPES if s in raw]
+    if any(s not in INTEGRATION_SCOPES for s in raw if s):
+        v.errors["scopes"] = f"Unknown scope; choose from: {', '.join(INTEGRATION_SCOPES)}."
+    elif not scopes:
+        v.errors["scopes"] = "Choose at least one scope."
+    v.clean["scopes"] = ",".join(scopes)
     return v.clean, v.errors
 
 
@@ -393,6 +477,214 @@ def validate_attachment(caption: Any, data: bytes | None) -> tuple[dict, dict]:
             v.clean["mime"] = mime
             v.clean["data"] = data
     return v.clean, v.errors
+
+
+# ------------------------------------------------------------------ evidence files --
+
+# MIME type by extension, from this fixed table only: the client's Content-Type and the system's mimetypes
+# database are never used. Unknown extensions become application/octet-stream.
+FILE_TYPES = {
+    "txt": "text/plain", "log": "text/plain", "md": "text/markdown", "nmap": "text/plain", "gnmap": "text/plain",
+    "csv": "text/csv", "tsv": "text/tab-separated-values",
+    "json": "application/json", "har": "application/json", "xml": "application/xml", "yaml": "application/yaml",
+    "yml": "application/yaml", "html": "text/html", "htm": "text/html", "xhtml": "application/xhtml+xml",
+    "svg": "image/svg+xml", "js": "text/javascript", "mjs": "text/javascript", "css": "text/css",
+    "py": "text/x-python", "sh": "application/x-sh", "ps1": "text/plain", "rb": "text/x-ruby",
+    "pl": "text/x-perl", "php": "application/x-httpd-php", "sql": "application/sql",
+    "pdf": "application/pdf", "zip": "application/zip", "gz": "application/gzip", "tgz": "application/gzip",
+    "tar": "application/x-tar", "7z": "application/x-7z-compressed", "bz2": "application/x-bzip2",
+    "xz": "application/x-xz", "rar": "application/vnd.rar",
+    "pcap": "application/vnd.tcpdump.pcap", "pcapng": "application/vnd.tcpdump.pcap",
+    "cap": "application/vnd.tcpdump.pcap", "png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg",
+}
+# Types a download may be labelled with. Everything else (HTML, SVG, XML, JS, PDF, scripts ...) is served as
+# application/octet-stream, so a browser can never render it as active content, even outside the attachment
+# disposition.
+SAFE_DOWNLOAD_TYPES = frozenset({
+    "text/plain", "text/csv", "text/tab-separated-values", "application/json", "application/zip",
+    "application/gzip", "application/x-tar", "application/x-7z-compressed", "application/x-bzip2",
+    "application/x-xz", "application/vnd.rar", "application/vnd.tcpdump.pcap", "image/png", "image/jpeg",
+})
+_FILE_KINDS = {
+    "text": ("txt", "log", "md", "csv", "tsv", "nmap", "gnmap"),
+    "code": ("json", "har", "xml", "yaml", "yml", "html", "htm", "xhtml", "svg", "js", "mjs", "css", "py", "sh",
+             "ps1", "rb", "pl", "php", "sql", "bat", "go", "java", "c", "ts"),
+    "archive": ("zip", "gz", "tgz", "tar", "7z", "bz2", "xz", "rar"),
+    "capture": ("pcap", "pcapng", "cap"),
+}
+_EXT_KIND = {ext: kind for kind, exts in _FILE_KINDS.items() for ext in exts}
+_RESERVED_FILENAME_CHARS = re.compile(r'[<>:"|?*]')
+_WINDOWS_DEVICE = re.compile(r"^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\.|$)", re.IGNORECASE)
+_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+_TIMESTAMP_RE = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$")
+
+
+def file_extension(filename: str) -> str:
+    stem, dot, ext = filename.rpartition(".")
+    return ext.lower() if dot and stem else ""
+
+
+def guess_file_type(filename: str) -> str:
+    return FILE_TYPES.get(file_extension(filename), "application/octet-stream")
+
+
+def file_kind(filename: str) -> str:
+    """Icon family of a file: text, code, archive, capture or file."""
+    return _EXT_KIND.get(file_extension(filename), "file")
+
+
+def download_type(mime: str) -> str:
+    return mime if mime in SAFE_DOWNLOAD_TYPES else "application/octet-stream"
+
+
+def sanitize_filename(value: Any) -> str:
+    """A display/download name: no directories, control or format characters (e.g. right-to-left override),
+    no characters reserved on Windows, no leading dots, at most FILENAME_MAX characters (extension kept).
+    Returns '' when nothing usable is left."""
+    if not isinstance(value, str):
+        return ""
+    name = unicodedata.normalize("NFC", value).replace("\\", "/").rsplit("/", 1)[-1]
+    name = "".join(ch for ch in name if unicodedata.category(ch)[0] != "C")
+    name = _RESERVED_FILENAME_CHARS.sub("_", name)
+    name = re.sub(r"\s+", " ", name).strip(" .")
+    if not name or not any(ch.isalnum() for ch in name):
+        return ""
+    if _WINDOWS_DEVICE.match(name):
+        name = "_" + name
+    if len(name) > FILENAME_MAX:
+        stem, dot, ext = name.rpartition(".")
+        if dot and stem and len(ext) <= 16:
+            name = stem[: FILENAME_MAX - len(ext) - 1].rstrip(" .") + "." + ext
+        else:
+            name = name[:FILENAME_MAX].rstrip(" .")
+    return name
+
+
+def validate_file(filename: Any, description: Any, data: bytes | None) -> tuple[dict, dict]:
+    """An evidence file upload. The SHA-256 and the MIME type are always computed here, on the server."""
+    v = Validator({"description": description})
+    v.text("description", max_len=SHORT, label="Description")
+    name = sanitize_filename(filename)
+    if not name:
+        v.errors["file"] = "The file needs a usable name (letters or digits, not only dots or slashes)."
+    elif data is None:
+        v.errors["file"] = "Choose a file."
+    elif len(data) == 0:
+        v.errors["file"] = f"{name}: the file is empty."
+    elif len(data) > FILE_MAX_BYTES:
+        v.errors["file"] = f"{name}: files must be at most {FILE_MAX_BYTES // (1024 * 1024)} MB."
+    else:
+        v.clean.update(filename=name, mime=guess_file_type(name), data=data, size=len(data),
+                       sha256=hashlib.sha256(data).hexdigest())
+    return v.clean, v.errors
+
+
+def check_file_quota(existing_count: int, existing_bytes: int, new_sizes: list[int]) -> str | None:
+    """Per-finding limits (number of files and total size); returns an error message or None."""
+    if existing_count + len(new_sizes) > FILE_MAX_PER_FINDING:
+        return f"A finding can have at most {FILE_MAX_PER_FINDING} files."
+    if existing_bytes + sum(new_sizes) > FILE_MAX_TOTAL_PER_FINDING:
+        left = max(0, FILE_MAX_TOTAL_PER_FINDING - existing_bytes) / (1024 * 1024)
+        return (f"Files of one finding can take at most {FILE_MAX_TOTAL_PER_FINDING // (1024 * 1024)} MB "
+                f"in total ({left:.1f} MB left).")
+    return None
+
+
+def validate_uploads(uploads: list, description: Any, existing: tuple[int, int]) -> tuple[list[dict], dict]:
+    """Validate a batch of uploaded files (werkzeug FileStorage), all or nothing, including the per-finding
+    limits given the finding's current (count, bytes). Shared by the web UI and the API."""
+    cleaned, problems, errors = [], [], {}
+    uploads = [u for u in uploads if u is not None and (u.filename or u.content_length)]
+    if not uploads:
+        errors["file"] = "Choose at least one file."
+    elif existing[0] + len(uploads) > FILE_MAX_PER_FINDING:
+        errors["file"] = check_file_quota(existing[0], existing[1], [0] * len(uploads))
+        return [], errors  # checked before reading anything into memory
+    for upload in uploads:
+        data = upload.read(FILE_MAX_BYTES + 1)
+        clean, errs = validate_file(upload.filename, description, data)
+        if "description" in errs:
+            errors["description"] = errs["description"]
+        if "file" in errs:
+            problems.append(errs["file"])
+        else:
+            cleaned.append(clean)
+    if problems:
+        errors["file"] = " ".join(problems[:10])
+    if not errors:
+        quota = check_file_quota(*existing, [c["size"] for c in cleaned])
+        if quota:
+            errors["file"] = quota
+    return cleaned, errors
+
+
+def is_sha256(value: Any) -> bool:
+    return isinstance(value, str) and bool(_SHA256_RE.match(value))
+
+
+def is_timestamp(value: Any) -> bool:
+    return isinstance(value, str) and bool(_TIMESTAMP_RE.match(value))
+
+
+_JPEG_SOF = {0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7, 0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF}
+
+
+def image_dimensions(data: bytes) -> tuple[int, int] | None:
+    """(width, height) read from a PNG IHDR or a JPEG SOF segment; None when the header is malformed."""
+    mime = sniff_image(data)
+    if mime == "image/png":
+        if len(data) < 33 or data[12:16] != b"IHDR":
+            return None
+        width, height = int.from_bytes(data[16:20], "big"), int.from_bytes(data[20:24], "big")
+        return (width, height) if width and height else None
+    if mime == "image/jpeg":
+        pos = 2
+        while pos + 4 <= len(data):
+            if data[pos] != 0xFF:
+                return None
+            marker = data[pos + 1]
+            if marker == 0xFF:  # fill byte
+                pos += 1
+                continue
+            if marker in (0xD8, 0x01) or 0xD0 <= marker <= 0xD7:  # markers without a length
+                pos += 2
+                continue
+            if marker in (0xD9, 0xDA):  # end of image / start of scan before any frame header
+                return None
+            length = int.from_bytes(data[pos + 2:pos + 4], "big")
+            if length < 2:
+                return None
+            if marker in _JPEG_SOF:
+                if pos + 9 > len(data):
+                    return None
+                height = int.from_bytes(data[pos + 5:pos + 7], "big")
+                width = int.from_bytes(data[pos + 7:pos + 9], "big")
+                return (width, height) if width and height else None
+            pos += 2 + length
+    return None
+
+
+def validate_edited_image(data: bytes | None, source: bytes) -> tuple[dict, dict]:
+    """An edited screenshot from the in-browser editor: a real PNG/JPEG within the upload limits whose
+    dimensions are sane and not larger than the image it was made from (the editor only crops)."""
+    clean, errors = validate_attachment("", data)
+    if errors:
+        return {}, errors
+    size = image_dimensions(clean["data"])
+    if size is None:
+        return {}, {"file": "The edited image is damaged (its header cannot be read)."}
+    if clean["mime"] == "image/png" and not clean["data"].endswith(b"IEND\xaeB`\x82"):
+        return {}, {"file": "The edited image is incomplete."}
+    width, height = size
+    if width > IMAGE_MAX_SIDE or height > IMAGE_MAX_SIDE:
+        return {}, {"file": f"The edited image must be at most {IMAGE_MAX_SIDE} pixels wide and high."}
+    limit = image_dimensions(source)
+    if limit is not None and (width > limit[0] or height > limit[1]):
+        return {}, {"file": f"The edited image ({width}×{height}) is larger than the original "
+                            f"({limit[0]}×{limit[1]})."}
+    clean.pop("caption", None)
+    clean["width"], clean["height"] = width, height
+    return clean, {}
 
 
 # Built-in section kinds; "text" is a custom section whose body is stored with it.

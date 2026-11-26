@@ -4,7 +4,7 @@ A template mixes literal text with placeholders:
   {prefix}  the report's finding prefix (e.g. ACME)
   {n}       the finding's number; {n:4} pads it with zeros to 4 digits
   {year}    the year the testing started (or the current year)
-Examples: "{prefix}-{n:3}" -> ACME-001, "{prefix}-{n:4}" -> LT-0002, "{year}/{prefix}/{n:2}" -> 2026/ACME/01.
+Examples: "{prefix}-{n:3}" -> ACME-001, "{prefix}-{n:4}" -> SEC-0002, "{year}/{prefix}/{n:2}" -> 2026/ACME/01.
 """
 
 from __future__ import annotations

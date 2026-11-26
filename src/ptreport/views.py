@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import io
+import base64
 from datetime import date
 import json
 import re
-import zipfile
+from urllib.parse import quote
 
 from flask import (
     Blueprint,
@@ -21,7 +21,7 @@ from flask import (
     url_for,
 )
 
-from ptreport import export, ids, importers, latex, repo
+from ptreport import ai, ai_import, export, ids, importers, latex, proposals, repo
 from ptreport.cvss_service import METRIC_DEFINITIONS, CvssInvalid, score_vector
 from ptreport.cwe import catalogue_version as cwe_catalogue_version
 from ptreport.cwe import cwe_choices, cwe_name, cwe_reference
@@ -36,10 +36,14 @@ from ptreport.rendering import (
     history_text,
     labels_for,
 )
-from ptreport.security import regenerate_api_token
+from ptreport.security import new_integration_token, regenerate_api_token
 from ptreport.validation import (
+    FILE_MAX_BYTES,
+    FILE_MAX_PER_FINDING,
+    FILE_MAX_TOTAL_PER_FINDING,
     IMAGE_MAX_BYTES,
     IMAGE_MAX_PER_FINDING,
+    CODE_LANGUAGES,
     CONFIDENCE_LEVELS,
     FINDING_STATUSES,
     LANGUAGES,
@@ -47,12 +51,19 @@ from ptreport.validation import (
     SEVERITIES,
     TARGET_KINDS,
     TEMPLATE_FIELDS,
+    download_type,
+    validate_code_evidence,
+    validate_edited_image,
     validate_evidence,
     validate_attachment,
+    validate_file,
+    validate_uploads,
+    validate_ai_settings,
     validate_brand_color,
     validate_cwe_note,
     validate_finding,
     validate_history_entry,
+    validate_integration_token,
     validate_note,
     validate_report_version,
     validate_section,
@@ -128,7 +139,8 @@ def report_detail(report_id: int):
     repo.ensure_sections(get_db(), report_id)
     ctx = export.build_context(get_db(), report_id)
     return render_template("reports/detail.html", section_kinds=SECTION_KIND_LABELS, addable_kinds=ADDABLE_KINDS,
-                           retest_mode=_retest_mode(ctx), note_count=repo.count_notes(get_db(), report_id), **ctx)
+                           retest_mode=_retest_mode(ctx), note_count=repo.count_notes(get_db(), report_id),
+                           ai_count=repo.count_proposals(get_db(), report_id), **ctx)
 
 
 @bp.route("/reports/<int:report_id>/edit", methods=["GET", "POST"])
@@ -224,7 +236,9 @@ def _finding_form(report: dict, finding: dict | None, values: dict, errors: dict
                   selected_targets: list[int], status: int = 200, *,
                   evidence_values: dict | None = None, evidence_errors: dict | None = None,
                   attachment_values: dict | None = None, attachment_errors: dict | None = None,
-                  history_values: dict | None = None, history_errors: dict | None = None):
+                  file_values: dict | None = None, file_errors: dict | None = None,
+                  history_values: dict | None = None, history_errors: dict | None = None,
+                  code_values: dict | None = None, code_errors: dict | None = None):
     return (
         render_template(
             "findings/form.html",
@@ -240,11 +254,19 @@ def _finding_form(report: dict, finding: dict | None, values: dict, errors: dict
             cwe_choices=cwe_choices(),
             cvss_defs=METRIC_DEFINITIONS,
             evidence=finding["evidence"] if finding else [],
+            code_evidence=finding["code_evidence"] if finding else [],
+            code_values=code_values or {"language": "pseudo"},
+            code_errors=code_errors or {},
+            code_languages=CODE_LANGUAGES,
             evidence_values=evidence_values or {},
             evidence_errors=evidence_errors or {},
             attachments=finding["attachments"] if finding else [],
             attachment_values=attachment_values or {},
             attachment_errors=attachment_errors or {},
+            files=finding["files"] if finding else [],
+            file_values=file_values or {},
+            file_errors=file_errors or {},
+            file_limits={"size": FILE_MAX_BYTES, "total": FILE_MAX_TOTAL_PER_FINDING, "count": FILE_MAX_PER_FINDING},
             confidence_levels=CONFIDENCE_LEVELS,
             target_kinds=TARGET_KINDS,
             history=[{**h, "text": history_text(h)} for h in finding["history"]] if finding else [],
@@ -252,6 +274,8 @@ def _finding_form(report: dict, finding: dict | None, values: dict, errors: dict
             history_errors=history_errors or {},
             retest_results=RETEST_RESULTS,
             templates=repo.list_templates(get_db()) if finding is None else [],
+            ai_enabled=repo.get_ai_settings(get_db())["enabled"],
+            ai_fields=AI_FIELD_LABELS,
         ),
         status,
     )
@@ -363,6 +387,48 @@ def evidence_delete(evidence_id: int):
     return redirect(url_for("web.finding_edit", finding_id=evidence["finding_id"], _anchor="evidence"))
 
 
+# ----------------------------------------------------------- code evidence --
+
+def _code_or_404(code_id: int) -> tuple[dict, dict, dict]:
+    item = repo.get_code_evidence(get_db(), code_id)
+    if item is None:
+        abort(404)
+    finding, report = _finding_or_404(item["finding_id"])
+    return item, finding, report
+
+
+@bp.post("/findings/<int:finding_id>/code-evidence")
+def code_evidence_new(finding_id: int):
+    finding, report = _finding_or_404(finding_id)
+    data, errors = validate_code_evidence(request.form)
+    if errors:
+        return _finding_form(report, finding, finding, {}, finding["target_ids"], 422,
+                             code_values=request.form, code_errors=errors)
+    repo.create_code_evidence(get_db(), finding, data)
+    flash("Code evidence added.", "success")
+    return redirect(url_for("web.finding_edit", finding_id=finding_id, _anchor="code-evidence"))
+
+
+@bp.post("/code-evidence/<int:code_id>/edit")
+def code_evidence_edit(code_id: int):
+    item, finding, report = _code_or_404(code_id)
+    data, errors = validate_code_evidence(request.form)
+    if errors:
+        flash("Code evidence not saved: " + "; ".join(errors.values()), "error")
+    else:
+        repo.update_code_evidence(get_db(), item, data)
+        flash("Code evidence saved.", "success")
+    return redirect(url_for("web.finding_edit", finding_id=finding["id"], _anchor=f"code-{code_id}"))
+
+
+@bp.post("/code-evidence/<int:code_id>/delete")
+def code_evidence_delete(code_id: int):
+    item, finding, _report = _code_or_404(code_id)
+    repo.delete_code_evidence(get_db(), item)
+    flash("Code evidence deleted.", "success")
+    return redirect(url_for("web.finding_edit", finding_id=finding["id"], _anchor="code-evidence"))
+
+
 # ------------------------------------------------------------- screenshots --
 
 @bp.post("/findings/<int:finding_id>/attachments")
@@ -397,6 +463,44 @@ def attachment_file(attachment_id: int):
     response.headers["Cache-Control"] = "private, max-age=3600"
     response.headers["ETag"] = attachment["sha256"]
     return response
+
+
+@bp.get("/attachments/<int:attachment_id>/original")
+def attachment_original(attachment_id: int):
+    """The untouched upload of an edited screenshot."""
+    attachment = _attachment_or_404(attachment_id, with_data=True)
+    if attachment["original_data"] is None:
+        abort(404)
+    response = Response(attachment["original_data"], mimetype=attachment["original_mime"])
+    response.headers["Content-Security-Policy"] = "default-src 'none'; sandbox"
+    response.headers["Content-Disposition"] = "inline"
+    return response
+
+
+@bp.post("/attachments/<int:attachment_id>/edit")
+def attachment_edit(attachment_id: int):
+    """Save the image produced by the screenshot editor (fetch + FormData, answers with JSON)."""
+    attachment = _attachment_or_404(attachment_id, with_data=True)
+    upload = request.files.get("file")
+    data = upload.read(IMAGE_MAX_BYTES + 1) if upload else None
+    source = attachment["original_data"] if attachment["original_data"] is not None else attachment["data"]
+    clean, errors = validate_edited_image(data, source)
+    if errors:
+        return jsonify(error="invalid", message=errors["file"]), 422
+    repo.save_edited_attachment(get_db(), attachment, clean["mime"], clean["data"])
+    flash("Screenshot saved. The original is kept; use Restore original to bring it back.", "success")
+    return jsonify(ok=True, width=clean["width"], height=clean["height"],
+                   redirect=url_for("web.finding_edit", finding_id=attachment["finding_id"], _anchor="screenshots"))
+
+
+@bp.post("/attachments/<int:attachment_id>/restore")
+def attachment_restore(attachment_id: int):
+    attachment = _attachment_or_404(attachment_id)
+    if repo.restore_attachment_original(get_db(), attachment):
+        flash("Original screenshot restored.", "success")
+    else:
+        flash("This screenshot has not been edited.", "error")
+    return redirect(url_for("web.finding_edit", finding_id=attachment["finding_id"], _anchor="screenshots"))
 
 
 @bp.post("/attachments/<int:attachment_id>/caption")
@@ -604,6 +708,69 @@ def report_version_delete(version_id: int):
     return redirect(url_for("web.report_detail", report_id=version["report_id"], _anchor="versions"))
 
 
+# ----------------------------------------------------------- evidence files --
+
+@bp.post("/findings/<int:finding_id>/files")
+def file_new(finding_id: int):
+    finding, report = _finding_or_404(finding_id)
+    cleaned, errors = validate_uploads(request.files.getlist("files"), request.form.get("description", ""),
+                                   repo.file_usage(get_db(), finding_id))
+    if errors:
+        return _finding_form(report, finding, finding, {}, finding["target_ids"], 422,
+                             file_values=request.form, file_errors=errors)
+    with transaction(get_db()):
+        for clean in cleaned:
+            repo.create_file(get_db(), finding, clean)
+    flash(f"{len(cleaned)} file{'s' if len(cleaned) != 1 else ''} added.", "success")
+    return redirect(url_for("web.finding_edit", finding_id=finding_id, _anchor="files"))
+
+
+def _file_or_404(file_id: int, with_data: bool = False) -> dict:
+    file = repo.get_file(get_db(), file_id, with_data=with_data)
+    if file is None:
+        abort(404)
+    return file
+
+
+def content_disposition(filename: str) -> str:
+    """attachment; with an ASCII fallback name and the UTF-8 name (RFC 6266 / 5987)."""
+    fallback = re.sub(r"[^A-Za-z0-9._ ()+-]", "_", filename) or "file"
+    return f"attachment; filename=\"{fallback}\"; filename*=UTF-8''{quote(filename, safe='')}"
+
+
+@bp.get("/files/<int:file_id>")
+def file_download(file_id: int):
+    """Always a download, never rendered: active types (HTML, SVG, JS, XML, PDF ...) go out as octet-stream."""
+    file = _file_or_404(file_id, with_data=True)
+    response = Response(file["data"], mimetype=download_type(file["mime"]))
+    response.headers["Content-Disposition"] = content_disposition(file["filename"])
+    response.headers["Content-Security-Policy"] = "default-src 'none'; sandbox"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    # RFC 9530 integrity field, so a client can check the bytes against the hash shown in the report
+    response.headers["Repr-Digest"] = f"sha-256=:{base64.b64encode(bytes.fromhex(file['sha256'])).decode('ascii')}:"
+    response.headers["ETag"] = f'"{file["sha256"]}"'
+    return response
+
+
+@bp.post("/files/<int:file_id>/description")
+def file_description(file_id: int):
+    file = _file_or_404(file_id)
+    clean, errors = validate_file(file["filename"], request.form.get("description", ""), b"x")
+    if errors.get("description"):
+        flash(errors["description"], "error")
+    else:
+        repo.update_file_description(get_db(), file, clean["description"])
+        flash("Description saved.", "success")
+    return redirect(url_for("web.finding_edit", finding_id=file["finding_id"], _anchor="files"))
+
+
+@bp.post("/files/<int:file_id>/delete")
+def file_delete(file_id: int):
+    file = _file_or_404(file_id)
+    repo.delete_file(get_db(), file)
+    flash(f"File {file['filename']} deleted.", "success")
+    return redirect(url_for("web.finding_edit", finding_id=file["finding_id"], _anchor="files"))
+
 # ---------------------------------------------------------------- export --
 
 @bp.get("/reports/<int:report_id>/preview")
@@ -616,37 +783,18 @@ def report_preview(report_id: int):
 def report_export(report_id: int, fmt: str, inline: bool = False):
     if fmt not in ("html", "md", "json", "pdf", "tex"):
         abort(404)
-    ctx = export.build_context(get_db(), report_id, inline_images=True)
-    if ctx is None:
+    try:
+        rendered = export.render_download(get_db(), report_id, fmt)
+    except latex.LatexError as exc:
+        current_app.logger.warning("PDF export of report %s failed: %s", report_id, exc)
+        return render_template("export/pdf_error.html", report=_report_or_404(report_id), error=str(exc),
+                               log=exc.log), 500
+    if rendered is None:
         abort(404)
-    title = ctx["report"]["title"]
-    if fmt == "html":
-        css = current_app.open_resource("static/report.css").read().decode("utf-8")
-        body = render_template("export/report.html", inline_css=css, preview=False, **ctx)
-        mimetype, ext = "text/html", "html"
-    elif fmt == "md":
-        body, mimetype, ext = export.to_markdown(ctx), "text/markdown", "md"
-    elif fmt == "json":
-        doc = export.to_json(ctx)
-        # working notes travel with the backup, but are not report content (not in the fingerprint)
-        doc["notes"] = [{f: n[f] for f in repo.NOTE_FIELDS} for n in reversed(repo.list_notes(get_db(), report_id))]
-        body = json.dumps(doc, ensure_ascii=False, indent=2)
-        mimetype, ext = "application/json", "json"
-    else:
-        try:
-            source, files = latex.render(ctx, repo.get_latex_template(get_db()))
-            if fmt == "pdf":
-                pdf = latex.compile_pdf(source, files, volatile=ctx["generated_at"])
-                body, mimetype, ext = pdf, "application/pdf", "pdf"
-            else:
-                body, mimetype, ext = _tex_zip(source, files), "application/zip", "zip"
-        except latex.LatexError as exc:
-            current_app.logger.warning("PDF export of report %s failed: %s", report_id, exc)
-            return render_template("export/pdf_error.html", report=ctx["report"], error=str(exc),
-                                   log=exc.log), 500
+    body, mimetype, filename = rendered
     response = Response(body, mimetype=mimetype)
     disposition = "inline" if inline else "attachment"
-    response.headers["Content-Disposition"] = f'{disposition}; filename="{export.safe_filename(title, ext)}"'
+    response.headers["Content-Disposition"] = f'{disposition}; filename="{filename}"'
     if fmt == "pdf":
         # the browser's own PDF viewer renders it; the HTML page policy would block that viewer
         response.headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'self'"
@@ -656,16 +804,6 @@ def report_export(report_id: int, fmt: str, inline: bool = False):
             "default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'"
         )
     return response
-
-
-def _tex_zip(source: str, files: dict[str, bytes]) -> bytes:
-    buffer = io.BytesIO()
-    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
-        archive.writestr("report.tex", source)
-        for name, data in files.items():
-            archive.writestr(name, data)
-        archive.writestr("README.txt", "Compile with: tectonic report.tex  (or: xelatex report.tex, twice)\n")
-    return buffer.getvalue()
 
 
 @bp.route("/import", methods=["GET", "POST"])
@@ -700,7 +838,10 @@ def _id_examples(id_format: str, start: int, prefix: str) -> list[str]:
     return [ids.render(id_format, prefix, start + i, None) for i in range(3)]
 
 
-def _settings_page(values: dict, errors: dict, status: int = 200):
+def _settings_page(values: dict, errors: dict, status: int = 200, *,
+                   ai_values: dict | None = None, ai_errors: dict | None = None,
+                   token_values: dict | None = None, token_errors: dict | None = None,
+                   new_token: dict | None = None):
     current = repo.get_settings(get_db())
     return (
         render_template(
@@ -716,6 +857,12 @@ def _settings_page(values: dict, errors: dict, status: int = 200):
             label_rows=_label_rows(),
             label_overrides=repo.get_label_overrides(get_db()),
             latex_engine=latex.find_engine(),
+            ai_values=ai_values if ai_values is not None else repo.get_ai_settings(get_db()),
+            ai_errors=ai_errors or {},
+            integration_tokens=repo.list_integration_tokens(get_db()),
+            token_values=token_values or {"scopes": ["read", "propose"]},
+            token_errors=token_errors or {},
+            new_token=new_token,
         ),
         status,
     )
@@ -895,6 +1042,309 @@ def settings_regenerate_token():
     return redirect(url_for("web.settings"))
 
 
+# ------------------------------------------------------------ integrations --
+
+@bp.post("/settings/integrations")
+def settings_integration_new():
+    data, errors = validate_integration_token(request.form)
+    if errors:
+        values = {"name": request.form.get("name", ""), "scopes": request.form.getlist("scopes")}
+        return _settings_page({k: str(v) for k, v in repo.get_settings(get_db()).items()}, {}, 422,
+                              token_values=values, token_errors=errors)
+    token, digest = new_integration_token()
+    token_id = repo.create_integration_token(get_db(), data["name"], data["scopes"], digest)
+    current_app.logger.info("Integration token %s created (scopes %s)", token_id, data["scopes"])
+    # Shown once, in this response only (never flashed: the session cookie must not carry it).
+    return _settings_page({k: str(v) for k, v in repo.get_settings(get_db()).items()}, {},
+                          new_token={"id": token_id, "name": data["name"], "scopes": data["scopes"], "token": token})
+
+
+@bp.post("/settings/integrations/<int:token_id>/revoke")
+def settings_integration_revoke(token_id: int):
+    if repo.get_integration_token(get_db(), token_id) is None:
+        abort(404)
+    repo.revoke_integration_token(get_db(), token_id)
+    current_app.logger.info("Integration token %s revoked", token_id)
+    flash("Integration token revoked. Requests with it are rejected from now on.", "success")
+    return redirect(url_for("web.settings", _anchor="integrations"))
+
+
+# ---------------------------------------------------------------- AI queue --
+
+def _proposal_or_404(proposal_id: int) -> tuple[dict, dict]:
+    proposal = repo.get_proposal(get_db(), proposal_id)
+    if proposal is None:
+        abort(404)
+    return proposal, _report_or_404(proposal["report_id"])
+
+
+@bp.get("/reports/<int:report_id>/ai-queue")
+def ai_queue(report_id: int):
+    report = _report_or_404(report_id)
+    settings = repo.get_settings(get_db())
+    findings = repo.list_findings(get_db(), report_id)
+    for f in findings:
+        f["display_id"] = repo.finding_display_id(report, f, settings)
+    pending = repo.list_proposals(get_db(), report_id, "pending")
+    groups = []
+    for kind in proposals.KINDS:
+        items = [{**p, "preview": proposals.preview(p, findings)} for p in pending if p["kind"] == kind]
+        if items:
+            groups.append({"kind": kind, "label": proposals.KIND_LABELS[kind], "entries": items})
+    decided = repo.recently_decided_proposals(get_db(), report_id)
+    return render_template("reports/ai_queue.html", report=report, groups=groups, pending_count=len(pending),
+                           import_url=url_for("web.ai_results_import", report_id=report_id),
+                           findings=findings, counts=repo.proposal_status_counts(get_db(), report_id),
+                           decided=[{**p, "preview": proposals.preview(p, findings)} for p in decided],
+                           severities=SEVERITIES)
+
+
+def _ai_import_form(report: dict, errors: list[str], status: int = 200):
+    return render_template("reports/ai_import.html", report=report, errors=errors, formats=ai_import.FORMATS,
+                           format_labels=ai_import.LABELS), status
+
+
+@bp.route("/reports/<int:report_id>/ai-import", methods=["GET", "POST"])
+def ai_results_import(report_id: int):
+    report = _report_or_404(report_id)
+    if request.method == "GET":
+        return _ai_import_form(report, [])
+    upload = request.files.get("file")
+    data = upload.read(ai_import.MAX_BYTES + 1) if upload else b""
+    if not data:
+        return _ai_import_form(report, ["Choose a SARIF, ptai capsule or proposal JSON file."], 422)
+    fmt = request.form.get("format", "")
+    if fmt and fmt not in ai_import.FORMATS:
+        return _ai_import_form(report, ["Unknown format."], 422)
+    try:
+        prepared = ai_import.prepare(get_db(), report_id, ai_import.parse(data, fmt or None))
+        ids_ = ai_import.submit(get_db(), report_id, prepared)
+    except (ai_import.ImportError_, proposals.ProposalError) as exc:
+        return _ai_import_form(report, [str(exc)], 422)
+    if not ids_:
+        return _ai_import_form(report, ["Nothing to import: the file has no usable results."]
+                               + prepared["warnings"][:10], 422)
+    retests = sum(1 for p in prepared["plan"] if p["action"] == "retest")
+    label = ai_import.LABELS[prepared["format"]]
+    flash(f"{label}: {len(ids_)} proposal(s) queued" + (f", {retests} of them as retest results" if retests else "")
+          + ". Nothing is in the report until you accept it.", "success")
+    for warning in prepared["warnings"][:3]:
+        flash(warning, "error")
+    if len(prepared["warnings"]) > 3:
+        flash(f"... and {len(prepared['warnings']) - 3} more note(s) from reading the file.", "error")
+    return redirect(url_for("web.ai_queue", report_id=report_id))
+
+
+def _merge_target() -> int | None:
+    raw = request.form.get("merge_into", "")
+    if not raw:
+        return None
+    if not raw.isdigit():
+        abort(400)
+    return int(raw)
+
+
+@bp.post("/ai-proposals/<int:proposal_id>/accept")
+def ai_proposal_accept(proposal_id: int):
+    proposal, report = _proposal_or_404(proposal_id)
+    merge_into = _merge_target()
+    try:
+        result = proposals.accept(get_db(), proposal, merge_into=merge_into)
+    except proposals.ProposalError as exc:
+        flash("Could not apply the proposal: " + "; ".join(list(exc.errors.values())[:3]), "error")
+        return redirect(url_for("web.ai_queue", report_id=report["id"]))
+    if result["status"] == "merged":
+        flash("Proposal merged into the existing finding.", "success")
+    elif proposal["kind"] == "finding":
+        flash("Proposal accepted as a new finding (status Open). Review it before the report goes out.", "success")
+    else:
+        flash("Proposal accepted.", "success")
+    return redirect(url_for("web.ai_queue", report_id=report["id"]))
+
+
+@bp.post("/ai-proposals/<int:proposal_id>/reject")
+def ai_proposal_reject(proposal_id: int):
+    proposal, report = _proposal_or_404(proposal_id)
+    try:
+        proposals.reject(get_db(), proposal)
+    except proposals.ProposalError as exc:
+        flash("; ".join(exc.errors.values()), "error")
+    else:
+        flash("Proposal rejected.", "success")
+    return redirect(url_for("web.ai_queue", report_id=report["id"]))
+
+
+@bp.post("/reports/<int:report_id>/ai-queue/bulk")
+def ai_queue_bulk(report_id: int):
+    _report_or_404(report_id)
+    action = request.form.get("action")
+    if action not in ("accept", "reject"):
+        abort(400)
+    chosen = [int(i) for i in request.form.getlist("proposal") if i.isdigit()][:proposals.MAX_PER_REQUEST]
+    if not chosen:
+        flash("Select at least one proposal.", "error")
+        return redirect(url_for("web.ai_queue", report_id=report_id))
+    done, failed = 0, []
+    for proposal_id in chosen:
+        proposal = repo.get_proposal(get_db(), proposal_id)
+        if proposal is None or proposal["report_id"] != report_id:
+            continue
+        try:
+            if action == "accept":
+                proposals.accept(get_db(), proposal)
+            else:
+                proposals.reject(get_db(), proposal)
+            done += 1
+        except proposals.ProposalError as exc:
+            failed.append(f"#{proposal_id}: " + "; ".join(list(exc.errors.values())[:2]))
+    verb = "accepted" if action == "accept" else "rejected"
+    if done:
+        flash(f"{done} proposal(s) {verb}.", "success")
+    if failed:
+        flash(f"{len(failed)} proposal(s) could not be {verb}: " + " · ".join(failed[:5]), "error")
+    return redirect(url_for("web.ai_queue", report_id=report_id))
+
+
+# ------------------------------------------------------- writing assistant --
+
+AI_FIELD_LABELS = {"description": "Description", "impact": "Impact", "technical_details": "Technical details",
+                   "remediation": "Remediation"}
+AI_MAX_BODY = 256 * 1024
+
+
+def _ai_json(message: str, status: int):
+    return jsonify(error=message), status
+
+
+def _ai_bucket():
+    bucket = current_app.extensions.get("ai_bucket")
+    if bucket is None:
+        bucket = ai.TokenBucket(current_app.config.get("AI_RATE_CAPACITY", 6),
+                                current_app.config.get("AI_RATE_PER_SECOND", 1 / 10))
+        current_app.extensions["ai_bucket"] = bucket
+    return bucket
+
+
+def _ai_payload() -> dict | None:
+    if (request.content_length or 0) > AI_MAX_BODY:
+        return None
+    data = request.get_json(silent=True)
+    return data if isinstance(data, dict) else None
+
+
+@bp.post("/settings/ai")
+def settings_ai():
+    data, errors = validate_ai_settings(request.form)
+    if errors:
+        values = {"enabled": request.form.get("enabled") == "1", "url": request.form.get("url", ""),
+                  "model": request.form.get("model", "")}
+        return _settings_page({k: str(v) for k, v in repo.get_settings(get_db()).items()}, {}, 422,
+                              ai_values=values, ai_errors=errors)
+    repo.set_ai_settings(get_db(), data)
+    flash("AI assistant " + ("enabled." if data["enabled"] else "settings saved (assistant is off)."), "success")
+    return redirect(url_for("web.settings", _anchor="ai-assistant"))
+
+
+def _ai_target_from_request() -> tuple:
+    data = _ai_payload()
+    if data is None:
+        return None, _ai_json("Send a JSON object with url and model.", 400)
+    url = data.get("url")
+    model = data.get("model", "")
+    if not isinstance(url, str) or not isinstance(model, str):
+        return None, _ai_json("url and model must be text.", 400)
+    url = ai.normalise_url(url)
+    problem = ai.url_problem(url)
+    if problem:
+        return None, _ai_json(problem, 400)
+    model = model.strip()
+    if model and ai.model_problem(model):
+        return None, _ai_json(ai.model_problem(model), 400)
+    return url, model
+
+
+@bp.post("/settings/ai/models")
+def settings_ai_models():
+    url, model = _ai_target_from_request()
+    if url is None:
+        return model
+    try:
+        models = ai.list_models(url)
+    except ai.AiError as exc:
+        return _ai_json(exc.message, exc.status)
+    return jsonify(models=models)
+
+
+@bp.post("/settings/ai/test")
+def settings_ai_test():
+    url, model = _ai_target_from_request()
+    if url is None:
+        return model
+    try:
+        message = ai.test_connection(url, model)
+    except ai.AiError as exc:
+        return _ai_json(exc.message, exc.status)
+    return jsonify(message=message)
+
+
+@bp.post("/ai/assist")
+def ai_assist():
+    settings = repo.get_ai_settings(get_db())
+    if not settings["enabled"]:
+        return _ai_json("The AI assistant is turned off. Enable it in Settings.", 404)
+    data = _ai_payload()
+    if data is None:
+        return _ai_json("Request too large or not a JSON object.", 413 if (request.content_length or 0) > AI_MAX_BODY
+                        else 400)
+    report_id = data.get("report_id")
+    if not isinstance(report_id, int) or isinstance(report_id, bool):
+        return _ai_json("report_id is required.", 400)
+    report = repo.get_report(get_db(), report_id)
+    if report is None:
+        return _ai_json("Report not found.", 404)
+    field = data.get("field")
+    action = data.get("action")
+    if field not in ai.FIELDS:
+        return _ai_json("Unknown field.", 400)
+    if action not in ai.ACTIONS:
+        return _ai_json("Unknown action.", 400)
+    texts: dict[str, str] = {}
+    for name in ("title", "cwe", "severity", *ai.CONTEXT_FIELDS):
+        value = data.get(name, "")
+        if not isinstance(value, str):
+            return _ai_json(f"{name} must be text.", 400)
+        limit = ai.MAX_TITLE_CHARS if name == "title" else 20 if name in ("cwe", "severity") else ai.MAX_FIELD_CHARS
+        if len(value) > limit:
+            if name in ai.CONTEXT_FIELDS and not (name == field and action != "draft"):
+                value = value[:limit]  # other fields are only context: a long one is cut, not refused
+            else:
+                label = AI_FIELD_LABELS.get(name, name.capitalize())
+                return _ai_json(f"{label} is too long for the assistant (at most {limit} characters).", 413)
+        texts[name] = value.replace("\x00", "").strip()
+    if action == "draft" and not texts["title"]:
+        return _ai_json("Write the vulnerability title first: the draft is based on it.", 422)
+    if action != "draft" and not texts[field]:
+        return _ai_json(f"{AI_FIELD_LABELS[field]} is empty; there is nothing to work on.", 422)
+    if not _ai_bucket().take():
+        return _ai_json("Too many assistant requests. Wait a few seconds and try again.", 429)
+
+    lang = report["language"] if report["language"] in ai.SYSTEM_PROMPT else "en"
+    cwe = texts["cwe"].upper()
+    if cwe and not cwe.startswith("CWE-"):
+        cwe = "CWE-" + cwe
+    severity = SEVERITY_LABELS[lang].get(texts["severity"], "") if texts["severity"] else ""
+    req = ai.AssistRequest(field=field, action=action, report_language=lang, title=texts["title"],
+                           cwe=cwe if cwe_name(cwe) else "", cwe_name=cwe_name(cwe) if cwe else "",
+                           severity=severity, fields={k: texts[k] for k in ai.CONTEXT_FIELDS})
+    current_app.logger.info("AI assist: action=%s field=%s model=%s", action, field, settings["model"])
+    try:
+        text = ai.chat(settings["url"], settings["model"], ai.build_messages(req),
+                       timeout=current_app.config.get("AI_TIMEOUT", ai.TIMEOUT_SECONDS))
+    except ai.AiError as exc:
+        return _ai_json(exc.message, exc.status)
+    return jsonify(text=text, field=field, action=action)
+
+
 # ------------------------------------------------------------------- cvss --
 
 @bp.get("/cvss/score")
@@ -1038,49 +1488,12 @@ def report_duplicate(report_id: int):
 
 # ---------------------------------------------------------- scanner import --
 
-SCANNER_LABELS = {"burp": "Burp Suite (XML)", "nessus": "Nessus (.nessus)", "nmap": "Nmap (XML, targets only)",
-                  "zap": "OWASP ZAP (XML)", "openvas": "OpenVAS / Greenbone (XML)"}
-MAX_IMPORTED_FINDINGS = 2000
-MAX_IMPORTED_TARGETS = 5000
+SCANNER_LABELS = importers.LABELS
 
 
 def _scan_form(report: dict, errors: list[str], status: int = 200):
     return render_template("reports/scan_import.html", report=report, errors=errors, formats=importers.FORMATS,
                            format_labels=SCANNER_LABELS), status
-
-
-def _clean_scan(parsed: dict) -> dict:
-    """Run the importer output through the same validators as manual input; drop what does not pass."""
-    warnings = list(parsed.get("warnings", []))
-    findings = []
-    for f in parsed["findings"][:MAX_IMPORTED_FINDINGS]:
-        clean, errors = validate_finding({**f, "status": "open"}, target_ids_raw=[])
-        if errors:
-            warnings.append(f"Skipped \"{f.get('title', '')[:80]}\": " + "; ".join(errors.values()))
-            continue
-        evidence = []
-        for e in f.get("evidence", []):
-            ev, ev_errors = validate_evidence({**e, "source": "import"})
-            if not ev_errors:
-                evidence.append(ev)
-        clean.pop("target_ids", None)
-        findings.append({**clean, "key": f["key"], "target_keys": list(f.get("target_keys", [])),
-                         "evidence": evidence})
-    if len(parsed["findings"]) > MAX_IMPORTED_FINDINGS:
-        warnings.append(f"Only the first {MAX_IMPORTED_FINDINGS} findings were read.")
-    targets = []
-    for t in parsed["targets"][:MAX_IMPORTED_TARGETS]:
-        clean, errors = validate_target(t)
-        if errors:
-            warnings.append(f"Skipped target \"{t.get('name', '')[:80]}\": " + "; ".join(errors.values()))
-            continue
-        targets.append({**clean, "key": t["key"]})
-    if len(parsed["targets"]) > MAX_IMPORTED_TARGETS:
-        warnings.append(f"Only the first {MAX_IMPORTED_TARGETS} targets were read.")
-    known = {t["key"] for t in targets}
-    for f in findings:
-        f["target_keys"] = [k for k in f["target_keys"] if k in known]
-    return {"format": parsed["format"], "targets": targets, "findings": findings, "warnings": warnings}
 
 
 @bp.route("/reports/<int:report_id>/scan-import", methods=["GET", "POST"])
@@ -1101,7 +1514,7 @@ def scan_import(report_id: int):
         parsed = importers.parse(data, fmt or None, include_info=request.form.get("include_info") == "1")
     except importers.ImportError_ as exc:
         return _scan_form(report, [str(exc)], 422)
-    cleaned = _clean_scan(parsed)
+    cleaned = importers.clean(parsed)
     if not cleaned["targets"] and not cleaned["findings"]:
         return _scan_form(report, ["Nothing to import: the file has no hosts or issues"
                                    + (" (informational issues were left out)" if fmt != "nmap" else "") + "."]
@@ -1228,3 +1641,20 @@ def note_delete(note_id: int):
     repo.delete_note(get_db(), note)
     flash("Note deleted.", "success")
     return redirect(url_for("web.notes", report_id=report["id"]))
+
+
+# ------------------------------------------------------------ burp extension --
+
+BURP_JAR = "data/ptreport-burp.jar"
+
+
+@bp.get("/downloads/ptreport-burp.jar")
+def burp_extension_download():
+    try:
+        with current_app.open_resource(BURP_JAR) as fh:
+            data = fh.read()
+    except FileNotFoundError:
+        abort(404, description="The Burp extension is not bundled with this build. Run burp-extension/build.sh.")
+    return Response(data, mimetype="application/java-archive",
+                    headers={"Content-Disposition": 'attachment; filename="ptreport-burp.jar"',
+                             "Cache-Control": "no-store"})

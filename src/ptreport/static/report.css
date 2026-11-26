@@ -7,6 +7,7 @@
   --c-sev-critical: #b3213a; --c-sev-high: #a9400a; --c-sev-medium: #7a5c00; --c-sev-low: #1b7a4f; --c-sev-info: #255e9f;
   --sev-tint: 8%;
   --c-st-open: #151b20; --c-st-fixed: #1b7a4f; --c-st-accepted: #5b3fb0; --c-st-false: #4a5762;
+  --c-st-partial: #7a5c00; --c-st-notfixed: #b3213a;
   --vec-0-bg: #ffffff; --vec-0-ink: #4a5762; --vec-0-line: #d5dce2;
   --vec-1-bg: #eef1f4; --vec-1-ink: #151b20; --vec-1-line: #d5dce2;
   --vec-2-bg: #c4ced6; --vec-2-ink: #151b20; --vec-2-line: #c4ced6;
@@ -114,6 +115,8 @@ pre code { background: none; border: 0; padding: 0; font-size: inherit; }
 
 .status { color: var(--st, var(--c-st-open)); font-weight: 500; }
 .status-fixed { --st: var(--c-st-fixed); } .status-risk_accepted { --st: var(--c-st-accepted); } .status-false_positive { --st: var(--c-st-false); }
+.status-partially_fixed { --st: var(--c-st-partial); } .status-not_fixed { --st: var(--c-st-notfixed); } .status-wont_fix { --st: var(--c-st-accepted); }
+.status-not_a_bug, .status-cannot_verify { --st: var(--c-st-false); }
 
 /* CVSS vector strip (signature) */
 .vec { position: relative; display: flex; flex-wrap: wrap; gap: var(--sp-1) var(--sp-2); margin: var(--sp-2) 0 0; padding: 0; list-style: none; }
@@ -199,6 +202,12 @@ ul.refs { padding-left: 1.2rem; margin: .2rem 0; } ul.refs li { overflow-wrap: a
 .figure img { display: block; max-width: 100%; max-height: 180mm; margin: 0 auto; border: 1px solid var(--c-line); }
 .figure figcaption { margin-top: var(--sp-2); text-align: center; font-size: var(--fs-sm); color: var(--c-muted); }
 .versions { margin-bottom: var(--sp-6); }
+
+/* Attached evidence files: name, size, full SHA-256 for integrity checks */
+.files td { vertical-align: top; }
+.files .muted { color: var(--muted); }
+.files .name, .files .sha { overflow-wrap: anywhere; }
+.files .sha { width: 48%; font-size: 8.5pt; }
 
 /* CVSS chip: the calculated CVSS score coloured by its own rating. Outlined with the number first, so it
    never reads as the tester's severity badge (filled, with level bars). */

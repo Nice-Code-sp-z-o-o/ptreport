@@ -7,6 +7,7 @@
     <h1>Reports</h1>
     <div class="cluster">
       <a class="btn" href="{{ url_for('web.report_import') }}">{{ icon('upload') }}Import JSON</a>
+      <a class="btn" href="{{ url_for('web.burp_extension_download') }}" download title="Java extension for Burp Suite: right-click a request and send it to a finding. Set the API token from Settings in Burp's ptreport tab.">{{ icon('download') }}Burp extension</a>
       <a class="btn btn-primary" href="{{ url_for('web.report_new') }}">{{ icon('plus') }}New report</a>
     </div>
   </div>

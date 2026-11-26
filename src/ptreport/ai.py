@@ -372,12 +372,12 @@ class TokenBucket:
         self.updated = time.monotonic()
         self.lock = threading.Lock()
 
-    def take(self) -> bool:
+    def take(self, n: int = 1) -> bool:
         with self.lock:
             now = time.monotonic()
             self.tokens = min(self.capacity, self.tokens + (now - self.updated) * self.rate)
             self.updated = now
-            if self.tokens >= 1:
-                self.tokens -= 1
+            if self.tokens >= n:
+                self.tokens -= n
                 return True
             return False

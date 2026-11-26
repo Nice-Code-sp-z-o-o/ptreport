@@ -44,6 +44,7 @@ from ptreport.validation import (
     validate_section,
     validate_evidence,
     validate_finding,
+    validate_origin,
     validate_report,
     validate_target,
 )
@@ -474,6 +475,7 @@ def to_json(ctx: dict, file_blobs: dict[int, bytes] | None = None) -> dict:
                 **{f: fd[f] for f in repo.FINDING_FIELDS if f not in ("severity", "cvss_score")},
                 "severity": fd["severity"],
                 "position": fd["position"],
+                "origin": fd.get("origin", ""),
                 "targets": [t["id"] for t in fd["targets"]],
                 "evidence": [{f: e[f] for f in repo.EVIDENCE_FIELDS} for e in fd["evidence"]],
                 "history": [{f: h[f] for f in repo.HISTORY_FIELDS} for h in fd["history"]],
@@ -588,6 +590,9 @@ def import_json(conn: sqlite3.Connection, payload: Any) -> int:
             refs = []
         clean, errs = validate_finding(f, target_ids_raw=[])
         _collect(f"finding #{i}", errs, problems)
+        clean["origin"], origin_error = validate_origin(f.get("origin"))
+        if origin_error:
+            problems.append(f"finding #{i}: origin: {origin_error}")
         ext = clean.get("external_id", "")
         if ext and ext.lower() in seen_external_ids:
             problems.append(f"finding #{i}: duplicate finding ID {ext}")

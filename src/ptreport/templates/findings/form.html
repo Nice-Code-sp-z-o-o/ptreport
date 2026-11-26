@@ -6,7 +6,7 @@
   {{ crumbs([('Reports', url_for('web.index'), False), (report.title, url_for('web.report_detail', report_id=report.id, _anchor='findings'), False), (display_id or 'New finding', None, (display_id is not none))]) }}
   <div class="page-head">
     <h1>{% if finding %}<span class="mono muted">{{ display_id }}</span> {{ finding.title }}{% else %}New finding{% endif %}</h1>
-    {% if finding %}<div class="cluster">{{ severity_badge(finding.severity) }}</div>{% endif %}
+    {% if finding %}<div class="cluster">{% if finding.origin %}<span class="chip pill-ai" title="{{ finding.origin }}">{{ icon('bot') }}AI<span class="visually-hidden">: added from an AI proposal ({{ finding.origin }})</span></span>{% endif %}{{ severity_badge(finding.severity) }}</div>{% endif %}
   </div>
   {% if errors %}{{ flash('error', 'Please fix the highlighted fields.') }}{% endif %}
 

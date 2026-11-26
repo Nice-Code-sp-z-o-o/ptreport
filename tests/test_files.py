@@ -434,11 +434,11 @@ def test_migration_14_creates_files_table_after_placeholder_12(tmp_path):
         script = "" if version == 12 else script
         conn.executescript("BEGIN;\n" + script + f"\nPRAGMA user_version = {version};\nCOMMIT;")
     assert conn.execute("SELECT name FROM sqlite_master WHERE name = 'finding_files'").fetchone() is None
-    assert migrate(conn) == len(MIGRATIONS) == 14
+    assert migrate(conn) == len(MIGRATIONS) >= 14
     assert conn.execute("SELECT name FROM sqlite_master WHERE name = 'finding_files'").fetchone() is not None
     assert conn.execute("SELECT name FROM sqlite_master WHERE name = 'idx_finding_files_finding'").fetchone()
     conn.close()
 
     fresh = connect(tmp_path / "fresh.db")
-    assert migrate(fresh) == 14
+    assert migrate(fresh) == len(MIGRATIONS)
     fresh.close()

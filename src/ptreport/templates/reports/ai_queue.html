@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, crumbs, severity_badge, post_button %}
+{% block title %}AI queue · {{ report.title }}{% endblock %}
+
+{% macro source_chips(p) -%}
+  {% if p.verdict == 'verified' %}<span class="chip pill-src verdict-verified" title="Confirmed by the tool's own verification">{{ icon('check-circle') }}verified</span>
+  {% elif p.verdict == 'candidate' %}<span class="chip pill-src" title="Not confirmed by the tool">candidate</span>{% endif %}
+  <span class="chip pill-src" title="Tool that sent this proposal">{{ icon('bot') }}{{ p.source_tool or 'AI agent' }}{% if p.source_version %} {{ p.source_version }}{% endif %}</span>
+  {% if p.run_id %}<span class="chip pill-src mono" title="Run / engagement id">run {{ p.run_id }}</span>{% endif %}
+  {% if p.model %}<span class="chip pill-src" title="Model">{{ p.model }}</span>{% endif %}
+{%- endmacro %}
+
+{% macro finding_options(selected) -%}
+  {% for f in findings %}<option value="{{ f.id }}"{% if selected and f.id == selected %} selected{% endif %}>{{ f.display_id }} · {{ f.title|truncate(60) }}</option>{% endfor %}
+{%- endmacro %}
+
+{% block content %}
+<div class="stack-lg">
+  {{ crumbs([('Reports', url_for('web.index'), False), (report.title, url_for('web.report_detail', report_id=report.id), False), ('AI queue', None, False)]) }}
+  <div class="page-head">
+    <div class="stack">
+      <h1>AI queue</h1>
+      <p class="muted">{{ pending_count }} pending · {{ counts.accepted }} accepted · {{ counts.merged }} merged · {{ counts.rejected }} rejected</p>
+    </div>
+    <div class="cluster">
+      {% if import_url is defined %}<a class="btn" href="{{ import_url }}">{{ icon('upload') }}Import AI results</a>{% endif %}
+      <a class="btn" href="{{ url_for('web.report_detail', report_id=report.id, _anchor='findings') }}">{{ icon('list') }}Back to findings</a>
+    </div>
+  </div>
+  <p class="prose">Results sent by AI agents (MCP, API, SARIF / ptai imports) wait here. <strong>Nothing is added to the report until you accept it.</strong> Accepted findings start as “Open” with the tool, run and verdict recorded as their origin.</p>
+
+  {% if not groups %}
+    <div class="empty">
+      {{ icon('bot') }}
+      <h3>No pending proposals</h3>
+      <p>Connect an agent with <code>ptreport mcp</code> or an integration token (Settings → Integrations), or import a SARIF file or a ptai proof capsule.</p>
+      <a class="btn" href="{{ url_for('web.settings', _anchor='integrations') }}">{{ icon('key') }}Integrations</a>
+    </div>
+  {% else %}
+    <form method="post" action="{{ url_for('web.ai_queue_bulk', report_id=report.id) }}" id="bulk-form" class="visually-hidden">
+      <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    </form>
+    {% for g in groups %}
+    <section class="panel stack-lg" aria-labelledby="aq-{{ g.kind }}-h">
+      <div class="section-head">
+        <h2 id="aq-{{ g.kind }}-h">{{ g.label }} <span class="muted">({{ g.entries|length }})</span></h2>
+      </div>
+      {% for p in g.entries %}{% set pv = p.preview %}
+        <article class="evidence proposal" aria-labelledby="p-{{ p.id }}-t">
+          <div class="evidence-head">
+            <div class="evidence-title">
+              <input type="checkbox" name="proposal" value="{{ p.id }}" form="bulk-form" id="p-{{ p.id }}-sel" aria-label="Select proposal: {{ pv.title }}">
+              <h3 id="p-{{ p.id }}-t"><label for="p-{{ p.id }}-sel">{{ pv.title or 'Untitled' }}</label></h3>
+              {{ source_chips(p) }}
+            </div>
+            <span class="muted small mono">#{{ p.id }} · {{ p.created_at }} UTC</span>
+          </div>
+
+          {% if p.kind == 'finding' %}
+            <div class="proposal-facts">
+              {{ severity_badge(p.data.severity) }}
+              {% if pv.cvss_score is not none %}<span class="mono" title="{{ p.data.cvss_vector }}">CVSS {{ '%.1f'|format(pv.cvss_score) }} <span class="muted small">v{{ p.data.cvss_version }}</span></span>{% endif %}
+              {% if p.data.cwe %}<span class="mono" title="{{ p.data.cwe|cwe_name }}">{{ p.data.cwe }}</span>{% endif %}
+              {% if p.data.targets %}<div class="chips">{% for t in p.data.targets[:4] %}<span class="chip" title="{{ t.address }}">{{ t.name }}</span>{% endfor %}{% if p.data.targets|length > 4 %}<span class="chip">+{{ p.data.targets|length - 4 }}</span>{% endif %}</div>{% endif %}
+              <span class="muted small">{{ p.data.evidence|length }} HTTP · {{ p.data.code_evidence|length }} code · {{ p.data.files|length }} file(s)</span>
+            </div>
+          {% elif p.kind == 'retest' %}
+            <div class="proposal-facts">
+              <span class="retest retest-{{ p.data.result }}">{{ RETEST_LABELS['en'][p.data.result] }}</span>
+              {% if pv.target_finding %}<span>for <a href="{{ url_for('web.finding_edit', finding_id=pv.target_finding.id) }}">{{ pv.target_finding.display_id }}</a></span>{% endif %}
+              {% if p.data.date %}<span class="mono muted">{{ p.data.date }}</span>{% endif %}
+              <span class="muted small">{{ p.data.evidence|length }} HTTP · {{ p.data.code_evidence|length }} code</span>
+            </div>
+          {% elif p.kind in ('evidence', 'code', 'file') %}
+            <div class="proposal-facts">
+              {% if p.kind == 'code' %}<span class="chip">{{ CODE_LANGUAGE_LABELS['en'][p.data.language] }}</span>{% if p.data.location %}<span class="mono small">{{ p.data.location }}</span>{% endif %}{% endif %}
+              {% if p.kind == 'file' %}<span>{{ p.data.size|filesize }}</span><code class="mono small" title="SHA-256: {{ p.data.sha256 }}">{{ p.data.sha256[:12] }}…</code>{% endif %}
+              {% if pv.target_finding %}<span>for <a href="{{ url_for('web.finding_edit', finding_id=pv.target_finding.id) }}">{{ pv.target_finding.display_id }}</a></span>{% else %}<span class="muted">the finding it named was deleted – choose one</span>{% endif %}
+            </div>
+          {% else %}
+            <div class="proposal-facts"><span class="chip">{{ TARGET_KIND_LABELS['en'][p.data.kind] }}</span><span class="mono small break">{{ p.data.address }}</span></div>
+          {% endif %}
+
+          {% if pv.excerpt %}<p class="small proposal-excerpt">{{ pv.excerpt }}</p>{% endif %}
+
+          {% if pv.duplicate %}
+            <p class="dup-hint" role="note">{{ icon('alert') }}<span>Looks like <a href="{{ url_for('web.finding_edit', finding_id=pv.duplicate.id) }}"><strong>{{ pv.duplicate.display_id }}</strong> {{ pv.duplicate.title }}</a> ({{ pv.duplicate_reason }}). Consider merging instead of adding a new finding.</span></p>
+          {% endif %}
+
+          <details class="proposal-details">
+            <summary class="btn btn-sm btn-ghost">{{ icon('chevron-down') }}Show everything</summary>
+            <div class="stack">
+              {% if p.kind == 'finding' %}
+                {% for key, label in [('description', 'Description'), ('impact', 'Impact'), ('technical_details', 'Technical details'), ('poc', 'Proof of Concept'), ('remediation', 'Remediation')] if p.data[key] %}
+                  <h4>{{ label }}</h4><div class="prose">{{ p.data[key]|richtext }}</div>
+                {% endfor %}
+                {% if p.data.refs %}<h4>References</h4>{{ p.data.refs|reference_list }}{% endif %}
+                {% if p.data.targets %}<h4>Targets</h4><ul class="prose">{% for t in p.data.targets %}<li>{{ t.name }} <span class="muted">({{ TARGET_KIND_LABELS['en'][t.kind] }})</span> <span class="mono small">{{ t.address }}</span></li>{% endfor %}</ul>{% endif %}
+                {% if p.data.files %}<h4>Files</h4><ul class="prose">{% for x in p.data.files %}<li>{{ x.filename }} · {{ x.size|filesize }} · <code class="mono small">{{ x.sha256 }}</code></li>{% endfor %}</ul>{% endif %}
+              {% endif %}
+              {% if p.kind == 'retest' and p.data.notes %}<h4>Notes</h4><div class="prose">{{ p.data.notes|richtext }}</div>{% endif %}
+              {% set http_items = p.data.evidence if p.kind in ('finding', 'retest') else ([p.data] if p.kind == 'evidence' else []) %}
+              {% for e in http_items %}
+                <h4>{{ e.title or 'HTTP request' }}</h4>
+                <div class="http-pair">
+                  <div class="http-pane"><h5>Request</h5><pre class="http" tabindex="0">{{ e.request|truncate(20000) }}</pre></div>
+                  <div class="http-pane"><h5>Response</h5><pre class="http" tabindex="0">{{ (e.response or '—')|truncate(20000) }}</pre></div>
+                </div>
+              {% endfor %}
+              {% set code_items = p.data.code_evidence if p.kind in ('finding', 'retest') else ([p.data] if p.kind == 'code' else []) %}
+              {% for c in code_items %}
+                <h4>{{ c.title or 'Code' }}{% if c.location %} <span class="mono small muted">{{ c.location }}</span>{% endif %}</h4>
+                <pre class="code" tabindex="0">{{ c.code|truncate(20000) }}</pre>
+                {% if c.note %}<p class="small">{{ c.note }}</p>{% endif %}
+              {% endfor %}
+            </div>
+          </details>
+
+          <div class="cluster proposal-actions">
+            {% if p.kind == 'finding' %}
+              {{ post_button(url_for('web.ai_proposal_accept', proposal_id=p.id), 'Accept as new finding', 'btn btn-sm btn-primary', icon_name='check') }}
+              {% if findings %}
+              <form method="post" action="{{ url_for('web.ai_proposal_accept', proposal_id=p.id) }}" class="inline merge-form">
+                <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+                <label class="visually-hidden" for="m-{{ p.id }}">Merge into finding</label>
+                <div class="select-wrap select-sm"><select class="select" id="m-{{ p.id }}" name="merge_into" required>{{ finding_options(pv.duplicate.id if pv.duplicate else None) }}</select>{{ icon('chevron-down') }}</div>
+                <button class="btn btn-sm" type="submit">{{ icon('merge') }}Merge</button>
+              </form>
+              {% endif %}
+            {% elif p.kind in ('evidence', 'code', 'file') %}
+              <form method="post" action="{{ url_for('web.ai_proposal_accept', proposal_id=p.id) }}" class="inline merge-form">
+                <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+                <label class="visually-hidden" for="m-{{ p.id }}">Add to finding</label>
+                <div class="select-wrap select-sm"><select class="select" id="m-{{ p.id }}" name="merge_into" required>{{ finding_options(p.target_finding_id) }}</select>{{ icon('chevron-down') }}</div>
+                <button class="btn btn-sm btn-primary" type="submit">{{ icon('check') }}Accept</button>
+              </form>
+            {% elif p.kind == 'retest' %}
+              {{ post_button(url_for('web.ai_proposal_accept', proposal_id=p.id), 'Apply retest result', 'btn btn-sm btn-primary', icon_name='check', disabled=not pv.target_finding) }}
+            {% else %}
+              {{ post_button(url_for('web.ai_proposal_accept', proposal_id=p.id), 'Add target', 'btn btn-sm btn-primary', icon_name='check') }}
+            {% endif %}
+            {{ post_button(url_for('web.ai_proposal_reject', proposal_id=p.id), 'Reject', 'btn btn-sm btn-ghost', icon_name='x') }}
+          </div>
+        </article>
+      {% endfor %}
+    </section>
+    {% endfor %}
+    <div class="save-bar">
+      <div class="cluster">
+        <label class="check check-inline"><input type="checkbox" data-check-all="proposal"><span class="check-text">Select all</span></label>
+        <button class="btn btn-primary" type="submit" form="bulk-form" name="action" value="accept">{{ icon('check') }}Accept selected</button>
+        <button class="btn btn-ghost" type="submit" form="bulk-form" name="action" value="reject">{{ icon('x') }}Reject selected</button>
+        <span class="muted small">Bulk accept adds findings as new ones; use Merge for duplicates.</span>
+      </div>
+    </div>
+  {% endif %}
+
+  {% if decided %}
+  <section class="panel stack" aria-labelledby="aq-done-h">
+    <h2 id="aq-done-h">Recently decided</h2>
+    <ul class="history-list">
+      {% for p in decided %}
+        <li class="history-row">
+          <div class="history-main"><span class="mono muted">{{ p.decided_at }}</span><span class="chip">{{ p.status }}</span><span>{{ p.preview.title }}</span><span class="muted small">{{ p.kind }} · {{ p.source_tool or 'AI agent' }}{% if p.run_id %} ({{ p.run_id }}){% endif %}</span></div>
+          <span></span><span></span>
+        </li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+</div>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='scan-import.js') }}"></script>{% endblock %}

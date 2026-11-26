@@ -21,7 +21,7 @@ from flask import (
     url_for,
 )
 
-from ptreport import ai, export, ids, importers, latex, repo
+from ptreport import ai, export, ids, importers, latex, proposals, repo
 from ptreport.cvss_service import METRIC_DEFINITIONS, CvssInvalid, score_vector
 from ptreport.cwe import catalogue_version as cwe_catalogue_version
 from ptreport.cwe import cwe_choices, cwe_name, cwe_reference
@@ -36,7 +36,7 @@ from ptreport.rendering import (
     history_text,
     labels_for,
 )
-from ptreport.security import regenerate_api_token
+from ptreport.security import new_integration_token, regenerate_api_token
 from ptreport.validation import (
     FILE_MAX_BYTES,
     FILE_MAX_PER_FINDING,
@@ -61,6 +61,7 @@ from ptreport.validation import (
     validate_cwe_note,
     validate_finding,
     validate_history_entry,
+    validate_integration_token,
     validate_note,
     validate_report_version,
     validate_section,
@@ -136,7 +137,8 @@ def report_detail(report_id: int):
     repo.ensure_sections(get_db(), report_id)
     ctx = export.build_context(get_db(), report_id)
     return render_template("reports/detail.html", section_kinds=SECTION_KIND_LABELS, addable_kinds=ADDABLE_KINDS,
-                           retest_mode=_retest_mode(ctx), note_count=repo.count_notes(get_db(), report_id), **ctx)
+                           retest_mode=_retest_mode(ctx), note_count=repo.count_notes(get_db(), report_id),
+                           ai_count=repo.count_proposals(get_db(), report_id), **ctx)
 
 
 @bp.route("/reports/<int:report_id>/edit", methods=["GET", "POST"])
@@ -788,7 +790,9 @@ def _id_examples(id_format: str, start: int, prefix: str) -> list[str]:
 
 
 def _settings_page(values: dict, errors: dict, status: int = 200, *,
-                   ai_values: dict | None = None, ai_errors: dict | None = None):
+                   ai_values: dict | None = None, ai_errors: dict | None = None,
+                   token_values: dict | None = None, token_errors: dict | None = None,
+                   new_token: dict | None = None):
     current = repo.get_settings(get_db())
     return (
         render_template(
@@ -806,6 +810,10 @@ def _settings_page(values: dict, errors: dict, status: int = 200, *,
             latex_engine=latex.find_engine(),
             ai_values=ai_values if ai_values is not None else repo.get_ai_settings(get_db()),
             ai_errors=ai_errors or {},
+            integration_tokens=repo.list_integration_tokens(get_db()),
+            token_values=token_values or {"scopes": ["read", "propose"]},
+            token_errors=token_errors or {},
+            new_token=new_token,
         ),
         status,
     )
@@ -983,6 +991,132 @@ def settings_regenerate_token():
     regenerate_api_token(current_app)
     flash("New API token generated. Update it in the Burp extension.", "success")
     return redirect(url_for("web.settings"))
+
+
+# ------------------------------------------------------------ integrations --
+
+@bp.post("/settings/integrations")
+def settings_integration_new():
+    data, errors = validate_integration_token(request.form)
+    if errors:
+        values = {"name": request.form.get("name", ""), "scopes": request.form.getlist("scopes")}
+        return _settings_page({k: str(v) for k, v in repo.get_settings(get_db()).items()}, {}, 422,
+                              token_values=values, token_errors=errors)
+    token, digest = new_integration_token()
+    token_id = repo.create_integration_token(get_db(), data["name"], data["scopes"], digest)
+    current_app.logger.info("Integration token %s created (scopes %s)", token_id, data["scopes"])
+    # Shown once, in this response only (never flashed: the session cookie must not carry it).
+    return _settings_page({k: str(v) for k, v in repo.get_settings(get_db()).items()}, {},
+                          new_token={"id": token_id, "name": data["name"], "scopes": data["scopes"], "token": token})
+
+
+@bp.post("/settings/integrations/<int:token_id>/revoke")
+def settings_integration_revoke(token_id: int):
+    if repo.get_integration_token(get_db(), token_id) is None:
+        abort(404)
+    repo.revoke_integration_token(get_db(), token_id)
+    current_app.logger.info("Integration token %s revoked", token_id)
+    flash("Integration token revoked. Requests with it are rejected from now on.", "success")
+    return redirect(url_for("web.settings", _anchor="integrations"))
+
+
+# ---------------------------------------------------------------- AI queue --
+
+def _proposal_or_404(proposal_id: int) -> tuple[dict, dict]:
+    proposal = repo.get_proposal(get_db(), proposal_id)
+    if proposal is None:
+        abort(404)
+    return proposal, _report_or_404(proposal["report_id"])
+
+
+@bp.get("/reports/<int:report_id>/ai-queue")
+def ai_queue(report_id: int):
+    report = _report_or_404(report_id)
+    settings = repo.get_settings(get_db())
+    findings = repo.list_findings(get_db(), report_id)
+    for f in findings:
+        f["display_id"] = repo.finding_display_id(report, f, settings)
+    pending = repo.list_proposals(get_db(), report_id, "pending")
+    groups = []
+    for kind in proposals.KINDS:
+        items = [{**p, "preview": proposals.preview(p, findings)} for p in pending if p["kind"] == kind]
+        if items:
+            groups.append({"kind": kind, "label": proposals.KIND_LABELS[kind], "entries": items})
+    decided = [p for p in repo.list_proposals(get_db(), report_id) if p["status"] != "pending"][-20:]
+    return render_template("reports/ai_queue.html", report=report, groups=groups, pending_count=len(pending),
+                           findings=findings, counts=repo.proposal_status_counts(get_db(), report_id),
+                           decided=[{**p, "preview": proposals.preview(p, findings)} for p in reversed(decided)],
+                           severities=SEVERITIES)
+
+
+def _merge_target() -> int | None:
+    raw = request.form.get("merge_into", "")
+    if not raw:
+        return None
+    if not raw.isdigit():
+        abort(400)
+    return int(raw)
+
+
+@bp.post("/ai-proposals/<int:proposal_id>/accept")
+def ai_proposal_accept(proposal_id: int):
+    proposal, report = _proposal_or_404(proposal_id)
+    merge_into = _merge_target()
+    try:
+        result = proposals.accept(get_db(), proposal, merge_into=merge_into)
+    except proposals.ProposalError as exc:
+        flash("Could not apply the proposal: " + "; ".join(list(exc.errors.values())[:3]), "error")
+        return redirect(url_for("web.ai_queue", report_id=report["id"]))
+    if result["status"] == "merged":
+        flash("Proposal merged into the existing finding.", "success")
+    elif proposal["kind"] == "finding":
+        flash("Proposal accepted as a new finding (status Open). Review it before the report goes out.", "success")
+    else:
+        flash("Proposal accepted.", "success")
+    return redirect(url_for("web.ai_queue", report_id=report["id"]))
+
+
+@bp.post("/ai-proposals/<int:proposal_id>/reject")
+def ai_proposal_reject(proposal_id: int):
+    proposal, report = _proposal_or_404(proposal_id)
+    try:
+        proposals.reject(get_db(), proposal)
+    except proposals.ProposalError as exc:
+        flash("; ".join(exc.errors.values()), "error")
+    else:
+        flash("Proposal rejected.", "success")
+    return redirect(url_for("web.ai_queue", report_id=report["id"]))
+
+
+@bp.post("/reports/<int:report_id>/ai-queue/bulk")
+def ai_queue_bulk(report_id: int):
+    _report_or_404(report_id)
+    action = request.form.get("action")
+    if action not in ("accept", "reject"):
+        abort(400)
+    chosen = [int(i) for i in request.form.getlist("proposal") if i.isdigit()][:proposals.MAX_PER_REQUEST]
+    if not chosen:
+        flash("Select at least one proposal.", "error")
+        return redirect(url_for("web.ai_queue", report_id=report_id))
+    done, failed = 0, []
+    for proposal_id in chosen:
+        proposal = repo.get_proposal(get_db(), proposal_id)
+        if proposal is None or proposal["report_id"] != report_id:
+            continue
+        try:
+            if action == "accept":
+                proposals.accept(get_db(), proposal)
+            else:
+                proposals.reject(get_db(), proposal)
+            done += 1
+        except proposals.ProposalError as exc:
+            failed.append(f"#{proposal_id}: " + "; ".join(list(exc.errors.values())[:2]))
+    verb = "accepted" if action == "accept" else "rejected"
+    if done:
+        flash(f"{done} proposal(s) {verb}.", "success")
+    if failed:
+        flash(f"{len(failed)} proposal(s) could not be {verb}: " + " · ".join(failed[:5]), "error")
+    return redirect(url_for("web.ai_queue", report_id=report_id))
 
 
 # ------------------------------------------------------- writing assistant --

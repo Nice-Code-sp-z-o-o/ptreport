@@ -5,14 +5,14 @@ from __future__ import annotations
 import base64
 import binascii
 
-from flask import Blueprint, abort, current_app, jsonify, request, url_for
+from flask import Blueprint, abort, current_app, g, jsonify, request, url_for
 
-from ptreport import __version__, repo
+from ptreport import __version__, ai, proposals, repo
 from ptreport.cwe import catalogue_version as cwe_catalogue_version
 from ptreport.cwe import cwe_choices
 from ptreport.cwe import search as cwe_search
 from ptreport.db import get_db, transaction
-from ptreport.security import require_api_token
+from ptreport.security import FULL_ACCESS, require_api_token
 from ptreport.validation import (
     IMAGE_MAX_PER_FINDING,
     validate_uploads,
@@ -25,6 +25,30 @@ from ptreport.validation import (
 
 bp = Blueprint("api", __name__, url_prefix="/api/v1")
 bp.before_request(require_api_token)
+
+# What an integration token (Settings -> Integrations) may call. Everything else needs the main API token.
+ENDPOINT_SCOPES = {
+    "api.ping": "",
+    "api.reports": "read", "api.report": "read", "api.targets": "read", "api.findings": "read",
+    "api.finding": "read", "api.templates": "read", "api.cwe_list": "read", "api.scope": "read",
+    "api.proposals_list": "read",
+    "api.proposals_create": "propose",
+}
+PROPOSAL_RATE_CAPACITY = 400   # proposals per token in a burst
+PROPOSAL_RATE_PER_SECOND = 2
+
+
+@bp.before_request
+def _check_scope():
+    scopes = getattr(g, "api_scopes", None)
+    if scopes is None or scopes == FULL_ACCESS:
+        return None
+    needed = ENDPOINT_SCOPES.get(request.endpoint or "")
+    if needed is None or (needed and needed not in scopes):
+        current_app.logger.warning("Integration token %s denied for %s", g.api_token_id, request.endpoint)
+        return jsonify(error="forbidden", message="This integration token does not have the scope for this "
+                                                  "endpoint." + (f" Needed: {needed}." if needed else "")), 403
+    return None
 
 
 def _json_body() -> dict:
@@ -247,3 +271,50 @@ def cwe_list():
     query = request.args.get("q", "").strip()[:100]
     rows = cwe_search(query) if query else cwe_choices()
     return jsonify(version=cwe_catalogue_version(), cwe=[{"id": i, "name": n} for i, n in rows])
+
+
+# ------------------------------------------------------------ AI proposals --
+
+def _proposal_bucket(key: str) -> ai.TokenBucket:
+    buckets = current_app.extensions.setdefault("proposal_buckets", {})
+    if key not in buckets:
+        buckets[key] = ai.TokenBucket(current_app.config.get("PROPOSAL_RATE_CAPACITY", PROPOSAL_RATE_CAPACITY),
+                                      current_app.config.get("PROPOSAL_RATE_PER_SECOND", PROPOSAL_RATE_PER_SECOND))
+    return buckets[key]
+
+
+@bp.get("/reports/<int:report_id>/proposals")
+def proposals_list(report_id: int):
+    """Proposals of a report (?status=pending|accepted|rejected|merged); file contents are left out."""
+    _report(report_id)
+    status = request.args.get("status", "")
+    if status and status not in proposals.STATUSES:
+        return _unprocessable({"status": f"Status must be one of: {', '.join(proposals.STATUSES)}."})
+    rows = repo.list_proposals(get_db(), report_id, status)
+    return jsonify(proposals=[proposals.public(p) for p in rows])
+
+
+@bp.post("/reports/<int:report_id>/proposals")
+def proposals_create(report_id: int):
+    """Queue AI proposals for human review: one proposal object, a list (max 200), or the
+    ``ptreport-proposals`` envelope. Nothing reaches the report before someone accepts it in the AI queue."""
+    _report(report_id)
+    body = request.get_json(silent=True)
+    if not isinstance(body, (dict, list)):
+        abort(400, description="Request body must be JSON (a proposal object or a list).")
+    try:
+        items = proposals.normalise_items(body)
+    except proposals.ProposalError as exc:
+        return _unprocessable(exc.errors)
+    if len(items) > proposals.MAX_PER_REQUEST:
+        return _unprocessable({"proposals": f"At most {proposals.MAX_PER_REQUEST} proposals at once."})
+    if not _proposal_bucket(str(g.api_token_id or "main")).take(max(1, len(items))):
+        return jsonify(error="rate_limited", message="Too many proposals; slow down and try again."), 429
+    try:
+        ids = proposals.submit(get_db(), report_id, items, token_id=g.api_token_id)
+    except proposals.ProposalError as exc:
+        return _unprocessable(exc.errors)
+    current_app.logger.info("API: %d AI proposal(s) queued for report %s (token %s)", len(ids), report_id,
+                            g.api_token_id or "main")
+    created = [proposals.public(repo.get_proposal(get_db(), i)) for i in ids]
+    return jsonify(proposals=created, review_url=url_for("web.ai_queue", report_id=report_id, _external=True)), 201

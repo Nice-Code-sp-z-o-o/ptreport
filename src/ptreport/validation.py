@@ -28,7 +28,13 @@ FINDING_STATUSES = (
 OPEN_STATUSES = ("open", "partially_fixed", "not_fixed")
 CONFIDENCE_LEVELS = ("certain", "probable", "unknown")
 RETEST_RESULTS = ("fixed", "partially_fixed", "not_fixed", "not_tested")
-TARGET_KINDS = ("web", "api", "host", "network", "mobile", "cloud", "wireless", "other")
+TARGET_KINDS = ("web", "api", "host", "network", "mobile", "cloud", "wireless", "binary", "firmware", "other")
+# Code evidence (reverse engineering, source review): languages a snippet can be labelled with.
+CODE_LANGUAGES = ("c", "cpp", "asm", "pseudo", "java", "python", "text")
+CODE_MAX = 200_000
+CODE_NOTE_MAX = 20_000
+EVIDENCE_SOURCES = ("manual", "burp", "import", "ai")
+INTEGRATION_SCOPES = ("read", "propose")
 LANGUAGES = ("en", "pl")
 
 SHORT = 300
@@ -351,9 +357,52 @@ def validate_evidence(data: Mapping[str, Any]) -> tuple[dict, dict]:
     request = v.text("request", max_len=HTTP_MESSAGE_MAX, multiline=True, strip=False,
                      label="HTTP request")
     v.text("response", max_len=HTTP_MESSAGE_MAX, multiline=True, strip=False, label="HTTP response")
-    v.choice("source", ("manual", "burp", "import"), "manual")
+    v.choice("source", EVIDENCE_SOURCES, "manual")
     if not request.strip() and "request" not in v.errors:
         v.errors["request"] = "HTTP request is required."
+    return v.clean, v.errors
+
+
+def validate_code_evidence(data: Mapping[str, Any]) -> tuple[dict, dict]:
+    """A code snippet as evidence: decompiled function, disassembly, source excerpt. Always shown as text."""
+    v = Validator(data)
+    v.text("title", max_len=SHORT, label="Title")
+    v.text("location", max_len=SHORT, label="Location (file / function / address)")
+    v.choice("language", CODE_LANGUAGES, "text", label="Language")
+    code = v.text("code", max_len=CODE_MAX, multiline=True, strip=False, label="Code")
+    if "code" not in v.errors:
+        v.clean["code"] = code.strip("\n").rstrip()
+        if not v.clean["code"].strip():
+            v.errors["code"] = "Code is required."
+    v.text("note", max_len=CODE_NOTE_MAX, multiline=True, label="Note")
+    return v.clean, v.errors
+
+
+def validate_origin(value: Any) -> tuple[str, str | None]:
+    """Provenance of a finding added from an AI proposal (single line, at most 300 characters)."""
+    v = Validator({"origin": value})
+    v.text("origin", max_len=SHORT, label="Origin")
+    return v.clean.get("origin", ""), v.errors.get("origin")
+
+
+def validate_integration_token(data: Mapping[str, Any]) -> tuple[dict, dict]:
+    """Settings -> Integrations: a name and at least one scope (read, propose)."""
+    v = Validator(data)
+    name = v.text("name", required=True, max_len=100, label="Name")
+    if name and "name" not in v.errors and not any(ch.isalnum() for ch in name):
+        v.errors["name"] = "Name must contain letters or digits."
+    raw = data.getlist("scopes") if hasattr(data, "getlist") else data.get("scopes")
+    if isinstance(raw, str):
+        raw = [s.strip() for s in raw.split(",")]
+    if not isinstance(raw, (list, tuple)) or any(not isinstance(s, str) for s in raw):
+        v.errors["scopes"] = "Scopes must be a list."
+        raw = []
+    scopes = [s for s in INTEGRATION_SCOPES if s in raw]
+    if any(s not in INTEGRATION_SCOPES for s in raw if s):
+        v.errors["scopes"] = f"Unknown scope; choose from: {', '.join(INTEGRATION_SCOPES)}."
+    elif not scopes:
+        v.errors["scopes"] = "Choose at least one scope."
+    v.clean["scopes"] = ",".join(scopes)
     return v.clean, v.errors
 
 

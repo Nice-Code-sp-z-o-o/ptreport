@@ -277,6 +277,54 @@ MIGRATIONS: list[str] = [
     );
     CREATE INDEX IF NOT EXISTS idx_finding_files_finding ON finding_files(finding_id, position);
     """,
+    # 15: AI agent integrations - scoped integration tokens, the intake queue of proposals (nothing an agent sends
+    # reaches a report before a human accepts it), provenance of accepted findings, code evidence (reverse
+    # engineering, source review)
+    """
+    CREATE TABLE integration_tokens (
+        id           INTEGER PRIMARY KEY,
+        name         TEXT    NOT NULL,
+        token_sha256 TEXT    NOT NULL UNIQUE,
+        scopes       TEXT    NOT NULL DEFAULT 'read',
+        created_at   TEXT    NOT NULL DEFAULT (datetime('now')),
+        last_used_at TEXT,
+        revoked_at   TEXT
+    );
+
+    CREATE TABLE ai_proposals (
+        id                      INTEGER PRIMARY KEY,
+        report_id               INTEGER NOT NULL REFERENCES reports(id) ON DELETE CASCADE,
+        kind                    TEXT    NOT NULL,
+        target_finding_id       INTEGER REFERENCES findings(id) ON DELETE SET NULL,
+        payload                 TEXT    NOT NULL,
+        source_tool             TEXT    NOT NULL DEFAULT '',
+        source_version          TEXT    NOT NULL DEFAULT '',
+        run_id                  TEXT    NOT NULL DEFAULT '',
+        model                   TEXT    NOT NULL DEFAULT '',
+        verdict                 TEXT    NOT NULL DEFAULT '',
+        status                  TEXT    NOT NULL DEFAULT 'pending',
+        duplicate_of_finding_id INTEGER REFERENCES findings(id) ON DELETE SET NULL,
+        created_at              TEXT    NOT NULL DEFAULT (datetime('now')),
+        decided_at              TEXT,
+        token_id                INTEGER REFERENCES integration_tokens(id) ON DELETE SET NULL
+    );
+    CREATE INDEX idx_ai_proposals_report_status ON ai_proposals(report_id, status);
+
+    ALTER TABLE findings ADD COLUMN origin TEXT NOT NULL DEFAULT '';
+
+    CREATE TABLE code_evidence (
+        id         INTEGER PRIMARY KEY,
+        finding_id INTEGER NOT NULL REFERENCES findings(id) ON DELETE CASCADE,
+        position   INTEGER NOT NULL,
+        title      TEXT    NOT NULL DEFAULT '',
+        location   TEXT    NOT NULL DEFAULT '',
+        language   TEXT    NOT NULL DEFAULT 'text',
+        code       TEXT    NOT NULL,
+        note       TEXT    NOT NULL DEFAULT '',
+        created_at TEXT    NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX idx_code_evidence_finding ON code_evidence(finding_id, position);
+    """,
 ]
 
 

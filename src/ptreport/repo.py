@@ -30,6 +30,7 @@ FINDING_FIELDS = (
     "external_id", "confidence", "retest_result", "retest_date", "retest_notes",
 )
 EVIDENCE_FIELDS = ("title", "request", "response", "source")
+CODE_FIELDS = ("title", "location", "language", "code", "note")
 ATTACHMENT_META = ("id, finding_id, position, caption, mime, sha256, length(data) AS size, created_at, "
                    "original_data IS NOT NULL AS edited, edited_at")
 FILE_META = "id, finding_id, position, filename, description, mime, size, sha256, uploaded_at"
@@ -170,6 +171,7 @@ def list_findings(conn: sqlite3.Connection, report_id: int) -> list[dict]:
         f["evidence"] = []
         f["attachments"] = []
         f["files"] = []
+        f["code_evidence"] = []
         f["history"] = []
     finding_ids = list(by_id)
     for row in conn.execute(
@@ -202,6 +204,12 @@ def list_findings(conn: sqlite3.Connection, report_id: int) -> list[dict]:
     ):
         by_id[row["finding_id"]]["files"].append(dict(row))
     for row in conn.execute(
+        f"SELECT * FROM code_evidence WHERE finding_id IN ({_placeholders(len(finding_ids))}) "
+        "ORDER BY position, id",
+        finding_ids,
+    ):
+        by_id[row["finding_id"]]["code_evidence"].append(dict(row))
+    for row in conn.execute(
         f"SELECT * FROM finding_history WHERE finding_id IN ({_placeholders(len(finding_ids))}) "
         "ORDER BY COALESCE(date, ''), id",
         finding_ids,
@@ -223,6 +231,7 @@ def get_finding(conn: sqlite3.Connection, finding_id: int) -> dict | None:
     finding["evidence"] = list_evidence(conn, finding_id)
     finding["attachments"] = list_attachments(conn, finding_id)
     finding["files"] = list_files(conn, finding_id)
+    finding["code_evidence"] = list_code_evidence(conn, finding_id)
     finding["history"] = list_history(conn, finding_id)
     return finding
 
@@ -241,9 +250,9 @@ def create_finding(conn: sqlite3.Connection, report_id: int, data: dict) -> int:
             "SELECT COALESCE(MAX(position), 0) + 1 FROM findings WHERE report_id = ?", (report_id,)
         ).fetchone()[0]
         cur = conn.execute(
-            f"INSERT INTO findings (report_id, position, {', '.join(FINDING_FIELDS)}) "
-            f"VALUES (?, ?, {_placeholders(len(FINDING_FIELDS))})",
-            [report_id, position] + [data.get(f, "") for f in FINDING_FIELDS],
+            f"INSERT INTO findings (report_id, position, origin, {', '.join(FINDING_FIELDS)}) "
+            f"VALUES (?, ?, ?, {_placeholders(len(FINDING_FIELDS))})",
+            [report_id, position, data.get("origin") or ""] + [data.get(f, "") for f in FINDING_FIELDS],
         )
         finding_id = int(cur.lastrowid)
         _set_finding_targets(conn, finding_id, data.get("target_ids", []))
@@ -465,6 +474,45 @@ def create_evidence(conn: sqlite3.Connection, finding: dict, data: dict) -> int:
 
 def delete_evidence(conn: sqlite3.Connection, evidence: dict) -> None:
     conn.execute("DELETE FROM http_evidence WHERE id = ?", (evidence["id"],))
+
+
+# ----------------------------------------------------------- code evidence --
+
+def list_code_evidence(conn: sqlite3.Connection, finding_id: int) -> list[dict]:
+    return [dict(r) for r in conn.execute(
+        "SELECT * FROM code_evidence WHERE finding_id = ? ORDER BY position, id", (finding_id,))]
+
+
+def get_code_evidence(conn: sqlite3.Connection, code_id: int) -> dict | None:
+    return _row(conn.execute("SELECT * FROM code_evidence WHERE id = ?", (code_id,)).fetchone())
+
+
+def create_code_evidence(conn: sqlite3.Connection, finding: dict, data: dict) -> int:
+    with transaction(conn):
+        position = conn.execute(
+            "SELECT COALESCE(MAX(position), 0) + 1 FROM code_evidence WHERE finding_id = ?", (finding["id"],)
+        ).fetchone()[0]
+        cur = conn.execute(
+            f"INSERT INTO code_evidence (finding_id, position, {', '.join(CODE_FIELDS)}) "
+            f"VALUES (?, ?, {_placeholders(len(CODE_FIELDS))})",
+            [finding["id"], position] + [data.get(f, "") for f in CODE_FIELDS],
+        )
+        conn.execute("UPDATE findings SET updated_at = datetime('now') WHERE id = ?", (finding["id"],))
+        touch_report(conn, finding["report_id"])
+    return int(cur.lastrowid)
+
+
+def update_code_evidence(conn: sqlite3.Connection, item: dict, data: dict) -> None:
+    with transaction(conn):
+        conn.execute(f"UPDATE code_evidence SET {', '.join(f + ' = ?' for f in CODE_FIELDS)} WHERE id = ?",
+                     [data.get(f, "") for f in CODE_FIELDS] + [item["id"]])
+        _touch_attachment_finding(conn, item["finding_id"])
+
+
+def delete_code_evidence(conn: sqlite3.Connection, item: dict) -> None:
+    with transaction(conn):
+        conn.execute("DELETE FROM code_evidence WHERE id = ?", (item["id"],))
+        _touch_attachment_finding(conn, item["finding_id"])
 
 
 def severity_counts(findings: list[dict[str, Any]]) -> dict[str, int]:
@@ -983,6 +1031,7 @@ def clone_report(conn: sqlite3.Connection, report_id: int, retest: bool) -> int:
             target_map[t["id"]] = create_target(conn, new_id, {f: t[f] for f in TARGET_FIELDS})
         for f in list_findings(conn, report_id):
             values = {k: f[k] for k in FINDING_FIELDS}
+            values["origin"] = f["origin"]
             values["target_ids"] = [target_map[t["id"]] for t in f["targets"] if t["id"] in target_map]
             if retest:
                 values.update(retest_result="", retest_date=None, retest_notes="")
@@ -992,6 +1041,8 @@ def clone_report(conn: sqlite3.Connection, report_id: int, retest: bool) -> int:
             new_finding = {"id": fid, "report_id": new_id}
             for e in f["evidence"]:
                 create_evidence(conn, new_finding, {k: e[k] for k in EVIDENCE_FIELDS})
+            for c in f["code_evidence"]:
+                create_code_evidence(conn, new_finding, {k: c[k] for k in CODE_FIELDS})
             att_ids = [a["id"] for a in f["attachments"]]
             blobs = attachment_data(conn, att_ids)
             originals = attachment_originals(conn, att_ids)
@@ -1149,3 +1200,107 @@ def update_note(conn: sqlite3.Connection, note: dict, data: dict) -> None:
 
 def delete_note(conn: sqlite3.Connection, note: dict) -> None:
     conn.execute("DELETE FROM report_notes WHERE id = ?", (note["id"],))
+
+
+# ------------------------------------------------------- integration tokens --
+
+TOKEN_META = "id, name, scopes, created_at, last_used_at, revoked_at"  # noqa: S105 - column list
+
+
+def list_integration_tokens(conn: sqlite3.Connection) -> list[dict]:
+    return [dict(r) for r in conn.execute(
+        f"SELECT {TOKEN_META} FROM integration_tokens ORDER BY revoked_at IS NOT NULL, created_at DESC, id DESC")]
+
+
+def get_integration_token(conn: sqlite3.Connection, token_id: int) -> dict | None:
+    return _row(conn.execute(f"SELECT {TOKEN_META} FROM integration_tokens WHERE id = ?", (token_id,)).fetchone())
+
+
+def create_integration_token(conn: sqlite3.Connection, name: str, scopes: str, token_sha256: str) -> int:
+    cur = conn.execute("INSERT INTO integration_tokens (name, scopes, token_sha256) VALUES (?, ?, ?)",
+                       (name, scopes, token_sha256))
+    return int(cur.lastrowid)
+
+
+def find_integration_token(conn: sqlite3.Connection, token_sha256: str) -> dict | None:
+    """An active (not revoked) token by the SHA-256 of its value."""
+    return _row(conn.execute(
+        f"SELECT {TOKEN_META}, token_sha256 FROM integration_tokens WHERE token_sha256 = ? AND revoked_at IS NULL",
+        (token_sha256,)).fetchone())
+
+
+def mark_integration_token_used(conn: sqlite3.Connection, token_id: int) -> None:
+    """Record the last use (at most once a minute, so reads do not write on every request)."""
+    conn.execute("UPDATE integration_tokens SET last_used_at = datetime('now') WHERE id = ? AND "
+                 "(last_used_at IS NULL OR last_used_at < datetime('now', '-1 minute'))", (token_id,))
+
+
+def revoke_integration_token(conn: sqlite3.Connection, token_id: int) -> None:
+    conn.execute("UPDATE integration_tokens SET revoked_at = datetime('now') WHERE id = ? AND revoked_at IS NULL",
+                 (token_id,))
+
+
+# ------------------------------------------------------------ AI proposals --
+
+PROPOSAL_COLUMNS = ("kind", "target_finding_id", "payload", "source_tool", "source_version", "run_id", "model",
+                    "verdict", "duplicate_of_finding_id", "token_id")
+
+
+def _proposal(row: sqlite3.Row | None) -> dict | None:
+    item = _row(row)
+    if item is not None:
+        item["data"] = json.loads(item.pop("payload"))
+    return item
+
+
+def create_proposal(conn: sqlite3.Connection, report_id: int, data: dict) -> int:
+    values = {**data, "payload": json.dumps(data["data"], ensure_ascii=False, separators=(",", ":"))}
+    cur = conn.execute(
+        f"INSERT INTO ai_proposals (report_id, {', '.join(PROPOSAL_COLUMNS)}) "
+        f"VALUES (?, {_placeholders(len(PROPOSAL_COLUMNS))})",
+        [report_id] + [values.get(c) if c in ("target_finding_id", "duplicate_of_finding_id", "token_id")
+                       else values.get(c, "") for c in PROPOSAL_COLUMNS],
+    )
+    return int(cur.lastrowid)
+
+
+def get_proposal(conn: sqlite3.Connection, proposal_id: int) -> dict | None:
+    return _proposal(conn.execute("SELECT * FROM ai_proposals WHERE id = ?", (proposal_id,)).fetchone())
+
+
+def list_proposals(conn: sqlite3.Connection, report_id: int, status: str = "", limit: int = 1000) -> list[dict]:
+    sql = "SELECT * FROM ai_proposals WHERE report_id = ?"
+    params: list = [report_id]
+    if status:
+        sql += " AND status = ?"
+        params.append(status)
+    sql += " ORDER BY id LIMIT ?"
+    params.append(limit)
+    return [_proposal(r) for r in conn.execute(sql, params)]
+
+
+def count_proposals(conn: sqlite3.Connection, report_id: int, status: str = "pending") -> int:
+    return conn.execute("SELECT COUNT(*) FROM ai_proposals WHERE report_id = ? AND status = ?",
+                        (report_id, status)).fetchone()[0]
+
+
+def proposal_status_counts(conn: sqlite3.Connection, report_id: int) -> dict[str, int]:
+    out = {"pending": 0, "accepted": 0, "merged": 0, "rejected": 0}
+    for row in conn.execute("SELECT status, COUNT(*) AS n FROM ai_proposals WHERE report_id = ? GROUP BY status",
+                            (report_id,)):
+        out[row["status"]] = row["n"]
+    return out
+
+
+def decide_proposal(conn: sqlite3.Connection, proposal_id: int, status: str) -> bool:
+    """Close a pending proposal (accepted / merged / rejected). False when it was no longer pending."""
+    cur = conn.execute("UPDATE ai_proposals SET status = ?, decided_at = datetime('now') "
+                       "WHERE id = ? AND status = 'pending'", (status, proposal_id))
+    return cur.rowcount == 1
+
+
+def set_finding_retest(conn: sqlite3.Connection, finding: dict, result: str, retest_date: str | None,
+                       notes: str) -> None:
+    conn.execute("UPDATE findings SET retest_result = ?, retest_date = ?, retest_notes = ?, "
+                 "updated_at = datetime('now') WHERE id = ?", (result, retest_date, notes, finding["id"]))
+    touch_report(conn, finding["report_id"])

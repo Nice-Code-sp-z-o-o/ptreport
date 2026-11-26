@@ -158,6 +158,55 @@
     <p class="hint">You can also print it with <code>ptreport --show-api-token</code>.</p>
     <div>{{ post_button(url_for('web.settings_regenerate_token'), 'Generate new token', 'btn btn-danger', 'Generate a new token? The old one stops working immediately.') }}</div>
   </section>
+  <section class="panel stack" id="integrations" aria-labelledby="int-h">
+    <h2 id="int-h">Integrations (AI agents)</h2>
+    <p class="prose">Tokens for AI agents and other tools (pentest-ai, Decepticon via MCP, reverse-engineering agents, CI jobs). A token with <strong>read</strong> can list reports, their findings, the scope, CWE and templates; <strong>propose</strong> can only send proposals to a report's <em>AI queue</em>, where you accept or reject them. It can never change a report directly. For a local agent client, <code>ptreport mcp</code> needs no token at all.</p>
+    {% if new_token %}
+      <div class="token-new" role="status">
+        <p><strong>{{ icon('check-circle') }} Token “{{ new_token.name }}” created ({{ new_token.scopes|replace(',', ', ') }}).</strong> Copy it now: it is stored only as a SHA-256 hash and cannot be shown again.</p>
+        <div class="token-row">
+          <input id="new-int-token" class="input is-mono" type="text" value="{{ new_token.token }}" readonly aria-label="New integration token" autocomplete="off">
+          <button class="btn" type="button" data-copy="new-int-token">{{ icon('copy') }}Copy</button>
+        </div>
+        <p class="hint">Use it as <code>Authorization: Bearer &lt;token&gt;</code> against <code>{{ api_base }}</code>, e.g. <code>POST /reports/&lt;id&gt;/proposals</code>.</p>
+      </div>
+    {% endif %}
+    {% if integration_tokens %}
+      <div class="table-wrap" tabindex="0" role="region" aria-label="Integration tokens, scrolls sideways">
+        <table class="table" aria-label="Integration tokens">
+          <thead><tr><th scope="col">Name</th><th scope="col">Scopes</th><th scope="col">Created (UTC)</th><th scope="col">Last used (UTC)</th><th scope="col">Status</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
+          <tbody>
+            {% for t in integration_tokens %}
+              <tr{% if t.revoked_at %} class="is-revoked"{% endif %}>
+                <td class="col-title">{{ icon('key') }} {{ t.name }}</td>
+                <td><span class="scope-chips">{% for sc in t.scopes.split(',') %}<span class="chip">{{ sc }}</span>{% endfor %}</span></td>
+                <td class="mono small">{{ t.created_at }}</td>
+                <td class="mono small">{{ t.last_used_at or '—' }}</td>
+                <td>{% if t.revoked_at %}<span class="muted">Revoked {{ t.revoked_at }}</span>{% else %}<span class="status status-fixed">{{ icon('check-circle') }}<span>Active</span></span>{% endif %}</td>
+                <td class="col-actions">{% if not t.revoked_at %}{{ post_button(url_for('web.settings_integration_revoke', token_id=t.id), 'Revoke', 'btn btn-sm btn-danger', 'Revoke the token "' ~ t.name ~ '"? Tools using it stop working immediately.', icon_name='trash') }}{% endif %}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
+    <form method="post" action="{{ url_for('web.settings_integration_new') }}" class="stack" novalidate data-validate>
+      <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+      <h3>New token</h3>
+      <div class="grid-2">
+        {{ input('name', 'Name', token_values, token_errors, required=True, maxlength=100, placeholder='pentest-ai on the jump box', prefix='int-', hint='Where the token is used, so you know what to revoke later.') }}
+        <fieldset class="field">
+          <legend class="label">Scopes <span class="req" aria-hidden="true">*</span></legend>
+          <div class="cluster">
+            <label class="check check-inline"><input type="checkbox" name="scopes" value="read"{% if 'read' in token_values.get('scopes', []) %} checked{% endif %}><span class="check-text">read</span></label>
+            <label class="check check-inline"><input type="checkbox" name="scopes" value="propose"{% if 'propose' in token_values.get('scopes', []) %} checked{% endif %}><span class="check-text">propose</span></label>
+          </div>
+          {% if token_errors.get('scopes') %}<p class="field-error" id="int-scopes-error">{{ icon('alert') }}<span>{{ token_errors['scopes'] }}</span></p>{% endif %}
+        </fieldset>
+      </div>
+      <div class="cluster"><button class="btn btn-primary" type="submit">{{ icon('key') }}Create token</button></div>
+    </form>
+  </section>
   <section class="panel stack" aria-labelledby="storage-h">
     <h2 id="storage-h">Storage</h2>
     <p class="prose">Database and secrets: <code>{{ data_dir }}</code></p>

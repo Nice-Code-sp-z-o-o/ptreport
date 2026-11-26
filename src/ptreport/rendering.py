@@ -241,9 +241,11 @@ STATUS_LABELS = {
 }
 TARGET_KIND_LABELS = {
     "en": {"web": "Web application", "api": "API", "host": "Host", "network": "Network range",
-           "mobile": "Mobile application", "cloud": "Cloud", "wireless": "Wireless", "other": "Other"},
+           "mobile": "Mobile application", "cloud": "Cloud", "wireless": "Wireless", "binary": "Binary",
+           "firmware": "Firmware", "other": "Other"},
     "pl": {"web": "Aplikacja webowa", "api": "API", "host": "Host", "network": "Zakres sieci",
-           "mobile": "Aplikacja mobilna", "cloud": "Chmura", "wireless": "Sieć bezprzewodowa", "other": "Inne"},
+           "mobile": "Aplikacja mobilna", "cloud": "Chmura", "wireless": "Sieć bezprzewodowa",
+           "binary": "Plik wykonywalny", "firmware": "Firmware", "other": "Inne"},
 }
 
 REPORT_LABELS = {
@@ -271,6 +273,7 @@ REPORT_LABELS = {
         "retest_result": "Retest result", "retest_date": "Retest date", "retest_notes": "Retest notes",
         "original_report": "Original report", "original_date": "original report dated",
         "attached_files": "Attached files", "file_name": "File", "file_size": "Size", "sha256": "SHA-256",
+        "code_evidence": "Code evidence", "code_location": "Location", "code_language": "Language",
     },
     "pl": {
         "report": "Raport z testów penetracyjnych", "client": "Klient", "assessor": "Testujący",
@@ -296,9 +299,17 @@ REPORT_LABELS = {
         "retest_result": "Wynik retestu", "retest_date": "Data retestu", "retest_notes": "Uwagi z retestu",
         "original_report": "Raport pierwotny", "original_date": "raport pierwotny z dnia",
         "attached_files": "Załączone pliki", "file_name": "Plik", "file_size": "Rozmiar", "sha256": "SHA-256",
+        "code_evidence": "Dowody w kodzie", "code_location": "Lokalizacja", "code_language": "Język",
     },
 }
 
+
+CODE_LANGUAGE_LABELS = {
+    "en": {"c": "C", "cpp": "C++", "asm": "Assembly", "pseudo": "Pseudocode", "java": "Java", "python": "Python",
+           "text": "Text"},
+    "pl": {"c": "C", "cpp": "C++", "asm": "Asembler", "pseudo": "Pseudokod", "java": "Java", "python": "Python",
+           "text": "Tekst"},
+}
 
 CONFIDENCE_LABELS = {
     "en": {"certain": "Certain", "probable": "Probable", "unknown": "Unknown"},
@@ -395,3 +406,4 @@ def init_app(app) -> None:
     app.jinja_env.globals["RETEST_LABELS"] = RETEST_LABELS
     app.jinja_env.globals["CONFIDENCE_LABELS"] = CONFIDENCE_LABELS
     app.jinja_env.globals["TARGET_KIND_LABELS"] = TARGET_KIND_LABELS
+    app.jinja_env.globals["CODE_LANGUAGE_LABELS"] = CODE_LANGUAGE_LABELS

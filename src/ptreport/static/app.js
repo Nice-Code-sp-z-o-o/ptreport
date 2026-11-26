@@ -84,6 +84,25 @@
     });
   });
 
+  // Copy a value held in the button itself (e.g. a file's SHA-256); the icon turns into a check for a moment.
+  if (navigator.clipboard) {
+    document.querySelectorAll("[data-copy-text]").forEach(function (btn) {
+      btn.hidden = false;
+      btn.addEventListener("click", function () {
+        navigator.clipboard.writeText(btn.getAttribute("data-copy-text")).then(function () {
+          var use = btn.querySelector("use");
+          var title = btn.title;
+          if (use) use.setAttribute("href", "#i-check");
+          btn.title = "Copied";
+          setTimeout(function () {
+            if (use) use.setAttribute("href", "#i-copy");
+            btn.title = title;
+          }, 1500);
+        });
+      });
+    });
+  }
+
   // Toasts: dismiss button; success toasts leave on their own, errors stay.
   document.querySelectorAll("[data-toast]").forEach(function (toast) {
     var close = toast.querySelector("[data-dismiss]");

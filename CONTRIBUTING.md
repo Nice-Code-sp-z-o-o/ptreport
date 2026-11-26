@@ -6,7 +6,8 @@ Thanks for helping! Bug reports, ideas and pull requests are welcome.
 
 - For a bigger change, open an issue first so we can agree on the approach.
 - Security problems: see [SECURITY.md](SECURITY.md), not the public tracker.
-- By contributing you agree that your contribution is released under the [MIT License](LICENSE).
+- By contributing you agree that your contribution is released under the [Apache License 2.0](LICENSE)
+  (inbound = outbound, as in section 5 of the licence).
 
 ## Development setup
 

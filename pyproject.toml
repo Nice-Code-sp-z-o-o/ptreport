@@ -8,8 +8,8 @@ version = "0.1.0"
 description = "Local-first penetration test report generator (SQLite, single command)."
 readme = "README.md"
 requires-python = ">=3.10"
-license = "MIT"
-license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md", "src/ptreport/data/CWE-LICENSE.txt", "src/ptreport/static/fonts/OFL.txt"]
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE", "THIRD_PARTY_NOTICES.md", "src/ptreport/data/CWE-LICENSE.txt", "src/ptreport/static/fonts/OFL.txt"]
 authors = [{ name = "Nice-Code sp. z o.o." }]
 keywords = ["pentest", "penetration-testing", "report", "security", "cvss", "cwe", "burp", "latex"]
 classifiers = [

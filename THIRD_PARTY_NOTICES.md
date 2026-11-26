@@ -1,6 +1,6 @@
 # Third-party software and data
 
-ptreport itself is released under the [MIT License](LICENSE). It uses or ships the following third-party
+ptreport itself is released under the [Apache License 2.0](LICENSE). It uses or ships the following third-party
 components, each under its own license.
 
 ## Python dependencies (installed from PyPI, not vendored)

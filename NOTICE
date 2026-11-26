@@ -1,0 +1,13 @@
+ptreport
+Copyright 2026 Nice-Code sp. z o.o. and ptreport contributors
+
+This product includes software developed by Nice-Code sp. z o.o. and the ptreport contributors
+(https://github.com/Nice-Code-sp-z-o-o/ptreport).
+
+This product includes the MITRE CWE List (https://cwe.mitre.org), used under the CWE Terms of Use
+(see src/ptreport/data/CWE-LICENSE.txt). CWE is a trademark of The MITRE Corporation.
+
+This product includes the Hanken Grotesk and JetBrains Mono fonts, licensed under the SIL Open Font
+License 1.1 (see src/ptreport/static/fonts/OFL.txt).
+
+Third-party dependencies and their licenses are listed in THIRD_PARTY_NOTICES.md.

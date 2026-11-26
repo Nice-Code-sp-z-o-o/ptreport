@@ -5,9 +5,9 @@ from __future__ import annotations
 import base64
 import binascii
 
-from flask import Blueprint, abort, current_app, g, jsonify, request, url_for
+from flask import Blueprint, Response, abort, current_app, g, jsonify, request, url_for
 
-from ptreport import __version__, ai, proposals, repo
+from ptreport import __version__, ai, proposals, repo, scope
 from ptreport.cwe import catalogue_version as cwe_catalogue_version
 from ptreport.cwe import cwe_choices
 from ptreport.cwe import search as cwe_search
@@ -31,7 +31,7 @@ bp.before_request(require_api_token)
 ENDPOINT_SCOPES = {
     "api.ping": "",
     "api.reports": "read", "api.report": "read", "api.targets": "read", "api.findings": "read",
-    "api.finding": "read", "api.templates": "read", "api.cwe_list": "read", "api.scope": "read",
+    "api.finding": "read", "api.templates": "read", "api.cwe_list": "read", "api.scope_out": "read",
     "api.proposals_list": "read",
     "api.proposals_create": "propose",
 }
@@ -103,6 +103,19 @@ def reports():
 def report(report_id: int):
     r = _report(report_id)
     return jsonify(report=r)
+
+
+@bp.get("/reports/<int:report_id>/scope")
+def scope_out(report_id: int):
+    """The engagement scope for agents: JSON (default) or a Markdown brief with ?format=md."""
+    _report(report_id)
+    doc = scope.scope_document(get_db(), report_id)
+    fmt = request.args.get("format", "json")
+    if fmt in ("md", "markdown"):
+        return Response(scope.to_markdown(doc), mimetype="text/markdown")
+    if fmt != "json":
+        return _unprocessable({"format": "Format must be json or md."})
+    return jsonify(scope=doc)
 
 
 @bp.get("/reports/<int:report_id>/targets")

@@ -166,6 +166,14 @@ def _build_parser() -> argparse.ArgumentParser:
     aii.add_argument("-y", "--yes", action="store_true",
                      help="do not ask for confirmation (required when stdin is not a terminal)")
 
+    scp = sub.add_parser(
+        "scope", parents=[common], help="print a report's engagement scope for agents (JSON or Markdown)",
+        description="Print the engagement scope of a report: client, testing window, targets, in-scope and "
+                    "out-of-scope text, methodology, contacts and language. JSON for tools, Markdown as a short "
+                    "engagement brief (e.g. the starting point for Decepticon's RoE / OPPLAN).")
+    scp.add_argument("report_id", type=_report_id, help="report id")
+    scp.add_argument("--format", choices=("json", "md"), default="json", help="output format (default: json)")
+
     mcp = sub.add_parser(
         "mcp", parents=[common], help="run the MCP server (stdio) for AI agent clients",
         description="Model Context Protocol server over stdio for agent clients (Claude Code, Codex, Cursor ...). "
@@ -571,6 +579,20 @@ def cmd_import_ai(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def cmd_scope(args: argparse.Namespace) -> int:
+    from ptreport import scope
+
+    _app, conn = _open(args)
+    with closing(conn):
+        _require_report(conn, args.report_id)
+        doc = scope.scope_document(conn, args.report_id)
+    if args.format == "md":
+        sys.stdout.write(_UNSAFE.sub("?", scope.to_markdown(doc)))  # tabs and newlines stay
+    else:
+        _dump_json(doc)
+    return EXIT_OK
+
+
 def cmd_mcp(args: argparse.Namespace) -> int:
     from ptreport import mcp
 
@@ -593,6 +615,7 @@ COMMANDS = {
     ("export", None): cmd_export,
     ("import-json", None): cmd_import_json,
     ("import-ai", None): cmd_import_ai,
+    ("scope", None): cmd_scope,
     ("mcp", None): cmd_mcp,
 }
 

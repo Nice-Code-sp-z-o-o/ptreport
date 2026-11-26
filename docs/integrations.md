@@ -14,6 +14,9 @@ manual input when it arrives *and again* when you accept it, and accepting is al
 - [MCP server: `ptreport mcp`](#mcp-server-ptreport-mcp)
 - [Importing SARIF, ptai capsules and proposal files](#importing-sarif-ptai-capsules-and-proposal-files)
 - [Reverse engineering: code evidence, binary and firmware targets](#reverse-engineering-code-evidence-binary-and-firmware-targets)
+- [Scope for agents](#scope-for-agents)
+- [Retest with ptai](#retest-with-ptai)
+- [Start Decepticon from a ptreport scope](#start-decepticon-from-a-ptreport-scope)
 - [Integration tokens and the API](#integration-tokens-and-the-api)
 - [Security notes](#security-notes)
 
@@ -336,6 +339,57 @@ the MCP tool `propose_retest_result`) for *fixed*.
   prints it in the report, so the client can check which build was reversed.
 - RE agents driving Ghidra or IDA through MCP (REA, ReAgent, GhidraMCP, ida-pro-mcp …) can call
   `propose_code_evidence` and `propose_file` next to `propose_finding` in the same client session.
+
+## Scope for agents
+
+The engagement as an agent needs it – client, testing window, targets (type, address, notes), what is in scope
+and what is not, methodology, contacts, report language:
+
+```bash
+ptreport scope 3                  # JSON ("format": "ptreport-scope", "version": 1)
+ptreport scope 3 --format md      # a short engagement brief in Markdown
+curl -s -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:5055/api/v1/reports/3/scope?format=md"   # scope: read
+```
+
+…and the MCP tool `get_scope` (`format: "markdown"` for the brief). A report has one *Scope* text; a heading or
+line *Out of scope* (also *Not in scope*, *Exclusions*, *Excluded*, *Poza zakresem*, *Wyłączenia*) inside it
+starts the out-of-scope part, up to the next heading. The brief ends with rules for agents: stay within the
+targets and the window, send results as proposals, include proof.
+
+## Retest with ptai
+
+1. In ptreport, open the original report and click **Create retest report**. Note the new report's id (say 7).
+2. Re-test with pentest-ai: `ptai retest <engagement>` scans the target again (`ptai diff` shows what changed).
+3. Export the result: `ptai export <engagement> --sarif retest.sarif` (or keep the proof capsules of the
+   re-verified findings).
+4. Import it into the **retest report**: `ptreport import-ai 7 retest.sarif --dry-run`, then without
+   `--dry-run` (or Report → *Import AI results*). Results that match a finding of the report are queued as
+   **retest results "not fixed"** with their evidence; new results are queued as new findings.
+5. In the AI queue, **Apply retest result** for each confirmed one. For findings ptai no longer reports,
+   verify the fix yourself (or let the agent do it) and record it explicitly – an agent with ptreport's MCP
+   server calls `propose_retest_result` with `result: "fixed"`, notes and the request that proves it. ptreport
+   never concludes "fixed" from a missing result.
+
+Through MCP the whole loop can run in one agent session: `get_report` (the findings to re-check) → ptai's MCP
+tools → `propose_retest_result` per finding.
+
+## Start Decepticon from a ptreport scope
+
+[Decepticon](https://github.com/PurpleAILAB/Decepticon) (PurpleAILAB's autonomous red-team agent) has no
+documented export format, so ptreport integrates with it through MCP only and never reads its Neo4j / Postgres
+stores.
+
+1. Register both servers in one agent client (see [the recommended setup](#recommended-setup-one-agent-client-several-mcp-servers)):
+   `claude mcp add decepticon -- decepticon mcp serve` and `claude mcp add ptreport -- ptreport mcp --report 3`.
+2. Give the agent the engagement: *"Call ptreport get_scope with format markdown and use it as the rules of
+   engagement / ConOps / OPPLAN input for Decepticon."* (or `ptreport scope 3 --format md > brief.md` and hand the
+   file to Decepticon).
+3. While Decepticon works, have the agent report each confirmed result with `propose_finding` (with the
+   request/response or command output as evidence, `verdict`, and `source: {"tool": "decepticon", "run_id": …}`).
+4. Review the AI queue in ptreport.
+
+Not verified: ptreport was not run against a live Decepticon instance; the recipe relies on Decepticon's MCP
+server as described by the project and on ptreport's own MCP tools, which are tested.
 
 ## Integration tokens and the API
 

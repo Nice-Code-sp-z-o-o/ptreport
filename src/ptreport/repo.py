@@ -56,6 +56,20 @@ def list_reports(conn: sqlite3.Connection) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def finding_counts_by_report(conn: sqlite3.Connection) -> dict[int, dict]:
+    """Per report: findings by severity plus how many are still open (one query for all reports)."""
+    out: dict[int, dict] = {}
+    for row in conn.execute(
+        "SELECT report_id, severity, status = 'open' AS is_open, COUNT(*) AS n FROM findings "
+        "GROUP BY report_id, severity, is_open"
+    ):
+        entry = out.setdefault(row["report_id"], {"severity": {s: 0 for s in SEVERITY_RANK}, "open": 0})
+        entry["severity"][row["severity"]] = entry["severity"].get(row["severity"], 0) + row["n"]
+        if row["is_open"]:
+            entry["open"] += row["n"]
+    return out
+
+
 def get_report(conn: sqlite3.Connection, report_id: int) -> dict | None:
     return _row(conn.execute("SELECT * FROM reports WHERE id = ?", (report_id,)).fetchone())
 

@@ -1228,3 +1228,20 @@ def note_delete(note_id: int):
     repo.delete_note(get_db(), note)
     flash("Note deleted.", "success")
     return redirect(url_for("web.notes", report_id=report["id"]))
+
+
+# ------------------------------------------------------------ burp extension --
+
+BURP_JAR = "data/ptreport-burp.jar"
+
+
+@bp.get("/downloads/ptreport-burp.jar")
+def burp_extension_download():
+    try:
+        with current_app.open_resource(BURP_JAR) as fh:
+            data = fh.read()
+    except FileNotFoundError:
+        abort(404, description="The Burp extension is not bundled with this build. Run burp-extension/build.sh.")
+    return Response(data, mimetype="application/java-archive",
+                    headers={"Content-Disposition": 'attachment; filename="ptreport-burp.jar"',
+                             "Cache-Control": "no-store"})

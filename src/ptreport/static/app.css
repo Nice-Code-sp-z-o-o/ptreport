@@ -98,3 +98,4 @@ span.label { display: block; margin-bottom: var(--sp-2); font-size: var(--fs-sm)
 .note-view .rt-table th { background: var(--c-raised); font-weight: var(--fw-semibold); }
 .note-view .rt-table .al-center { text-align: center; } .note-view .rt-table .al-right { text-align: right; }
 .note-search { display: flex; gap: var(--sp-2); } .note-search .input { flex: 1 1 auto; min-width: 0; }
+.steps { display: grid; gap: var(--sp-1); padding-left: var(--sp-5); margin: 0; }

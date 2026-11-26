@@ -1,6 +1,6 @@
 <div align="center">
 
-# ptreport
+# ptreport – Penetration Test Report generator
 
 ### Free, open-source penetration test report generator
 

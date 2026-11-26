@@ -101,7 +101,7 @@ span.label { display: block; margin-bottom: var(--sp-2); font-size: var(--fs-sm)
 .steps { display: grid; gap: var(--sp-1); padding-left: var(--sp-5); margin: 0; }
 
 /* Writing assistant (local Ollama) */
-.field-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); min-height: var(--h-sm); }
+.field-head { display: flex; align-items: center; gap: var(--sp-3); min-height: var(--h-sm); }
 .field-head > label { font-size: var(--fs-sm); font-weight: var(--fw-semibold); }
 .ai-menu > summary { color: var(--c-muted); }
 .ai-menu > summary:is(:hover, .is-hover), .ai-menu[open] > summary { color: var(--c-text); }
@@ -117,7 +117,7 @@ button.menu-item:disabled { color: var(--c-muted); cursor: not-allowed; }
 .modal.modal-ai { width: min(760px, calc(100vw - 2 * var(--sp-4))); max-height: calc(100vh - 2 * var(--sp-5)); display: none; flex-direction: column; }
 .modal.modal-ai[open] { display: flex; }
 .modal-ai-body { position: relative; flex: 1 1 auto; min-height: 12rem; overflow: auto; padding: var(--sp-5); }
-.modal-ai-body .textarea { min-height: 14rem; }
+.modal-ai-body .textarea { min-height: 14rem; max-width: none; }
 .ai-status { display: flex; align-items: center; justify-content: center; gap: var(--sp-3); min-height: 10rem; padding: var(--sp-5); color: var(--c-muted); text-align: center; }
 .ai-status .icon { flex: none; width: 20px; height: 20px; animation: spin 900ms linear infinite; }
 .ai-status.is-error { color: var(--c-danger); }

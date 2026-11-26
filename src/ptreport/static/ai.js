@@ -207,6 +207,8 @@
     if (!el) return;
     el.value = text.value;
     changed(el);
+    el.setSelectionRange(0, 0);
+    el.scrollTop = 0;
   });
   buttons.insert.addEventListener("click", function () {
     var el = target();

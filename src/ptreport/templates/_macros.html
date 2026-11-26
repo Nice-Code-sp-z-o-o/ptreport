@@ -27,7 +27,7 @@
   {%- set langs = [('pl', 'Polish'), ('en', 'English')] if lang == 'pl' else [('en', 'English'), ('pl', 'Polish')] -%}
   <details class="dropdown ai-menu" data-ai-menu hidden>
     <summary class="btn btn-sm btn-ghost" aria-label="Writing assistant for {{ label }}">{{ icon('sparkle') }}Assist{{ icon('chevron-down') }}</summary>
-    <div class="dropdown-menu" role="group" aria-label="Writing assistant for {{ label }}">
+    <div class="dropdown-menu align-start" role="group" aria-label="Writing assistant for {{ label }}">
       <button class="menu-item" type="button" data-ai-action="draft" data-ai-field="{{ name }}">{{ icon('edit') }}Draft from title/CWE</button>
       <button class="menu-item" type="button" data-ai-action="improve" data-ai-field="{{ name }}">{{ icon('check') }}Improve wording</button>
       <div class="menu-sep"></div>

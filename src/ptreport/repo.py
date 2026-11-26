@@ -31,6 +31,8 @@ FINDING_FIELDS = (
 )
 EVIDENCE_FIELDS = ("title", "request", "response", "source")
 ATTACHMENT_META = "id, finding_id, position, caption, mime, sha256, length(data) AS size, created_at"
+FILE_META = "id, finding_id, position, filename, description, mime, size, sha256, uploaded_at"
+FILE_FIELDS = ("filename", "description", "mime", "size", "sha256", "uploaded_at")
 
 
 def _row(row: sqlite3.Row | None) -> dict | None:
@@ -151,6 +153,7 @@ def list_findings(conn: sqlite3.Connection, report_id: int) -> list[dict]:
         f["targets"] = []
         f["evidence"] = []
         f["attachments"] = []
+        f["files"] = []
         f["history"] = []
     finding_ids = list(by_id)
     for row in conn.execute(
@@ -177,6 +180,12 @@ def list_findings(conn: sqlite3.Connection, report_id: int) -> list[dict]:
     ):
         by_id[row["finding_id"]]["attachments"].append(dict(row))
     for row in conn.execute(
+        f"SELECT {FILE_META} FROM finding_files WHERE finding_id IN ({_placeholders(len(finding_ids))}) "
+        "ORDER BY position, id",
+        finding_ids,
+    ):
+        by_id[row["finding_id"]]["files"].append(dict(row))
+    for row in conn.execute(
         f"SELECT * FROM finding_history WHERE finding_id IN ({_placeholders(len(finding_ids))}) "
         "ORDER BY COALESCE(date, ''), id",
         finding_ids,
@@ -197,6 +206,7 @@ def get_finding(conn: sqlite3.Connection, finding_id: int) -> dict | None:
     ]
     finding["evidence"] = list_evidence(conn, finding_id)
     finding["attachments"] = list_attachments(conn, finding_id)
+    finding["files"] = list_files(conn, finding_id)
     finding["history"] = list_history(conn, finding_id)
     return finding
 
@@ -480,6 +490,65 @@ def update_attachment_caption(conn: sqlite3.Connection, attachment: dict, captio
 
 def delete_attachment(conn: sqlite3.Connection, attachment: dict) -> None:
     conn.execute("DELETE FROM attachments WHERE id = ?", (attachment["id"],))
+
+
+# ---------------------------------------------------------- evidence files --
+
+def list_files(conn: sqlite3.Connection, finding_id: int) -> list[dict]:
+    return [
+        dict(r)
+        for r in conn.execute(
+            f"SELECT {FILE_META} FROM finding_files WHERE finding_id = ? ORDER BY position, id", (finding_id,)
+        )
+    ]
+
+
+def get_file(conn: sqlite3.Connection, file_id: int, with_data: bool = False) -> dict | None:
+    columns = "*" if with_data else FILE_META
+    return _row(conn.execute(f"SELECT {columns} FROM finding_files WHERE id = ?", (file_id,)).fetchone())
+
+
+def file_data(conn: sqlite3.Connection, file_ids: list[int]) -> dict[int, bytes]:
+    if not file_ids:
+        return {}
+    rows = conn.execute(
+        f"SELECT id, data FROM finding_files WHERE id IN ({_placeholders(len(file_ids))})", list(file_ids)
+    )
+    return {r["id"]: r["data"] for r in rows}
+
+
+def file_usage(conn: sqlite3.Connection, finding_id: int) -> tuple[int, int]:
+    """(number of files, total bytes) of a finding, for the per-finding limits."""
+    row = conn.execute(
+        "SELECT COUNT(*), COALESCE(SUM(size), 0) FROM finding_files WHERE finding_id = ?", (finding_id,)
+    ).fetchone()
+    return int(row[0]), int(row[1])
+
+
+def create_file(conn: sqlite3.Connection, finding: dict, data: dict) -> int:
+    """Store a validated file. Size and SHA-256 are recomputed from the bytes, never taken from the caller."""
+    blob = data["data"]
+    with transaction(conn):
+        position = conn.execute(
+            "SELECT COALESCE(MAX(position), 0) + 1 FROM finding_files WHERE finding_id = ?", (finding["id"],)
+        ).fetchone()[0]
+        cur = conn.execute(
+            "INSERT INTO finding_files (finding_id, position, filename, description, mime, size, sha256, data, "
+            "uploaded_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now')))",
+            (finding["id"], position, data["filename"], data.get("description", ""), data["mime"], len(blob),
+             hashlib.sha256(blob).hexdigest(), blob, data.get("uploaded_at")),
+        )
+        conn.execute("UPDATE findings SET updated_at = datetime('now') WHERE id = ?", (finding["id"],))
+        touch_report(conn, finding["report_id"])
+    return int(cur.lastrowid)
+
+
+def update_file_description(conn: sqlite3.Connection, file: dict, description: str) -> None:
+    conn.execute("UPDATE finding_files SET description = ? WHERE id = ?", (description, file["id"]))
+
+
+def delete_file(conn: sqlite3.Connection, file: dict) -> None:
+    conn.execute("DELETE FROM finding_files WHERE id = ?", (file["id"],))
 
 
 # ---------------------------------------------------------- report versions --
@@ -802,7 +871,7 @@ def template_as_finding_values(template: dict) -> dict:
 # ------------------------------------------------------------------ retests --
 
 def clone_report(conn: sqlite3.Connection, report_id: int, retest: bool) -> int:
-    """Copy a report with targets, findings (incl. evidence and screenshots), structure and CWE notes.
+    """Copy a report with targets, findings (incl. evidence, screenshots and files), structure and CWE notes.
 
     A retest copy links to the original (retest_of / original_finding_id), starts with a retest summary
     section and clears the findings' retest fields; a plain copy is an independent duplicate."""
@@ -832,6 +901,9 @@ def clone_report(conn: sqlite3.Connection, report_id: int, retest: bool) -> int:
             for a in f["attachments"]:
                 mime, blob = blobs[a["id"]]
                 create_attachment(conn, new_finding, {"caption": a["caption"], "mime": mime, "data": blob})
+            file_blobs = file_data(conn, [x["id"] for x in f["files"]])
+            for x in f["files"]:
+                create_file(conn, new_finding, {**{k: x[k] for k in FILE_FIELDS}, "data": file_blobs[x["id"]]})
         sections = [{k: s[k] for k in SECTION_FIELDS} for s in list_sections(conn, report_id)]
         if retest and not any(s["kind"] == "retest_summary" for s in sections):
             sections.insert(0, {"kind": "retest_summary", "title": "", "level": 1, "numbered": 1, "new_page": 0,

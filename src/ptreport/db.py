@@ -237,6 +237,22 @@ MIGRATIONS: list[str] = [
     );
     CREATE INDEX idx_report_notes_report ON report_notes(report_id, pinned, updated_at);
     """,
+    # 12: evidence files of any type per finding (pcap, logs, HAR ...), with a server-side SHA-256
+    """
+    CREATE TABLE finding_files (
+        id          INTEGER PRIMARY KEY,
+        finding_id  INTEGER NOT NULL REFERENCES findings(id) ON DELETE CASCADE,
+        position    INTEGER NOT NULL,
+        filename    TEXT    NOT NULL,
+        description TEXT    NOT NULL DEFAULT '',
+        mime        TEXT    NOT NULL,
+        size        INTEGER NOT NULL,
+        sha256      TEXT    NOT NULL,
+        data        BLOB    NOT NULL,
+        uploaded_at TEXT    NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX idx_finding_files_finding ON finding_files(finding_id, position);
+    """,
 ]
 
 

@@ -7,7 +7,9 @@ when it is non-empty ``clean_data`` must not be persisted.
 
 from __future__ import annotations
 
+import hashlib
 import re
+import unicodedata
 from collections.abc import Mapping
 from datetime import date
 from typing import Any
@@ -29,6 +31,11 @@ LONG = 200_000
 HTTP_MESSAGE_MAX = 5_000_000
 IMAGE_MAX_BYTES = 10 * 1024 * 1024
 IMAGE_MAX_PER_FINDING = 50
+# Evidence files (any type). Stored in SQLite, so the limits keep the database and JSON exports manageable.
+FILE_MAX_BYTES = 25 * 1024 * 1024          # per file
+FILE_MAX_TOTAL_PER_FINDING = 100 * 1024 * 1024
+FILE_MAX_PER_FINDING = 50
+FILENAME_MAX = 180
 
 _CONTROL_CHARS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 _PREFIX_RE = re.compile(r"^[A-Z][A-Z0-9]{0,9}$")
@@ -393,6 +400,153 @@ def validate_attachment(caption: Any, data: bytes | None) -> tuple[dict, dict]:
             v.clean["mime"] = mime
             v.clean["data"] = data
     return v.clean, v.errors
+
+
+# ------------------------------------------------------------------ evidence files --
+
+# MIME type by extension, from this fixed table only: the client's Content-Type and the system's mimetypes
+# database are never used. Unknown extensions become application/octet-stream.
+FILE_TYPES = {
+    "txt": "text/plain", "log": "text/plain", "md": "text/markdown", "nmap": "text/plain", "gnmap": "text/plain",
+    "csv": "text/csv", "tsv": "text/tab-separated-values",
+    "json": "application/json", "har": "application/json", "xml": "application/xml", "yaml": "application/yaml",
+    "yml": "application/yaml", "html": "text/html", "htm": "text/html", "xhtml": "application/xhtml+xml",
+    "svg": "image/svg+xml", "js": "text/javascript", "mjs": "text/javascript", "css": "text/css",
+    "py": "text/x-python", "sh": "application/x-sh", "ps1": "text/plain", "rb": "text/x-ruby",
+    "pl": "text/x-perl", "php": "application/x-httpd-php", "sql": "application/sql",
+    "pdf": "application/pdf", "zip": "application/zip", "gz": "application/gzip", "tgz": "application/gzip",
+    "tar": "application/x-tar", "7z": "application/x-7z-compressed", "bz2": "application/x-bzip2",
+    "xz": "application/x-xz", "rar": "application/vnd.rar",
+    "pcap": "application/vnd.tcpdump.pcap", "pcapng": "application/vnd.tcpdump.pcap",
+    "cap": "application/vnd.tcpdump.pcap", "png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg",
+}
+# Types a download may be labelled with. Everything else (HTML, SVG, XML, JS, PDF, scripts ...) is served as
+# application/octet-stream, so a browser can never render it as active content, even outside the attachment
+# disposition.
+SAFE_DOWNLOAD_TYPES = frozenset({
+    "text/plain", "text/csv", "text/tab-separated-values", "application/json", "application/zip",
+    "application/gzip", "application/x-tar", "application/x-7z-compressed", "application/x-bzip2",
+    "application/x-xz", "application/vnd.rar", "application/vnd.tcpdump.pcap", "image/png", "image/jpeg",
+})
+_FILE_KINDS = {
+    "text": ("txt", "log", "md", "csv", "tsv", "nmap", "gnmap"),
+    "code": ("json", "har", "xml", "yaml", "yml", "html", "htm", "xhtml", "svg", "js", "mjs", "css", "py", "sh",
+             "ps1", "rb", "pl", "php", "sql", "bat", "go", "java", "c", "ts"),
+    "archive": ("zip", "gz", "tgz", "tar", "7z", "bz2", "xz", "rar"),
+    "capture": ("pcap", "pcapng", "cap"),
+}
+_EXT_KIND = {ext: kind for kind, exts in _FILE_KINDS.items() for ext in exts}
+_RESERVED_FILENAME_CHARS = re.compile(r'[<>:"|?*]')
+_WINDOWS_DEVICE = re.compile(r"^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\.|$)", re.IGNORECASE)
+_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+_TIMESTAMP_RE = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$")
+
+
+def file_extension(filename: str) -> str:
+    stem, dot, ext = filename.rpartition(".")
+    return ext.lower() if dot and stem else ""
+
+
+def guess_file_type(filename: str) -> str:
+    return FILE_TYPES.get(file_extension(filename), "application/octet-stream")
+
+
+def file_kind(filename: str) -> str:
+    """Icon family of a file: text, code, archive, capture or file."""
+    return _EXT_KIND.get(file_extension(filename), "file")
+
+
+def download_type(mime: str) -> str:
+    return mime if mime in SAFE_DOWNLOAD_TYPES else "application/octet-stream"
+
+
+def sanitize_filename(value: Any) -> str:
+    """A display/download name: no directories, control or format characters (e.g. right-to-left override),
+    no characters reserved on Windows, no leading dots, at most FILENAME_MAX characters (extension kept).
+    Returns '' when nothing usable is left."""
+    if not isinstance(value, str):
+        return ""
+    name = unicodedata.normalize("NFC", value).replace("\\", "/").rsplit("/", 1)[-1]
+    name = "".join(ch for ch in name if unicodedata.category(ch)[0] != "C")
+    name = _RESERVED_FILENAME_CHARS.sub("_", name)
+    name = re.sub(r"\s+", " ", name).strip(" .")
+    if not name or not any(ch.isalnum() for ch in name):
+        return ""
+    if _WINDOWS_DEVICE.match(name):
+        name = "_" + name
+    if len(name) > FILENAME_MAX:
+        stem, dot, ext = name.rpartition(".")
+        if dot and stem and len(ext) <= 16:
+            name = stem[: FILENAME_MAX - len(ext) - 1].rstrip(" .") + "." + ext
+        else:
+            name = name[:FILENAME_MAX].rstrip(" .")
+    return name
+
+
+def validate_file(filename: Any, description: Any, data: bytes | None) -> tuple[dict, dict]:
+    """An evidence file upload. The SHA-256 and the MIME type are always computed here, on the server."""
+    v = Validator({"description": description})
+    v.text("description", max_len=SHORT, label="Description")
+    name = sanitize_filename(filename)
+    if not name:
+        v.errors["file"] = "The file needs a usable name (letters or digits, not only dots or slashes)."
+    elif data is None:
+        v.errors["file"] = "Choose a file."
+    elif len(data) == 0:
+        v.errors["file"] = f"{name}: the file is empty."
+    elif len(data) > FILE_MAX_BYTES:
+        v.errors["file"] = f"{name}: files must be at most {FILE_MAX_BYTES // (1024 * 1024)} MB."
+    else:
+        v.clean.update(filename=name, mime=guess_file_type(name), data=data, size=len(data),
+                       sha256=hashlib.sha256(data).hexdigest())
+    return v.clean, v.errors
+
+
+def check_file_quota(existing_count: int, existing_bytes: int, new_sizes: list[int]) -> str | None:
+    """Per-finding limits (number of files and total size); returns an error message or None."""
+    if existing_count + len(new_sizes) > FILE_MAX_PER_FINDING:
+        return f"A finding can have at most {FILE_MAX_PER_FINDING} files."
+    if existing_bytes + sum(new_sizes) > FILE_MAX_TOTAL_PER_FINDING:
+        left = max(0, FILE_MAX_TOTAL_PER_FINDING - existing_bytes) / (1024 * 1024)
+        return (f"Files of one finding can take at most {FILE_MAX_TOTAL_PER_FINDING // (1024 * 1024)} MB "
+                f"in total ({left:.1f} MB left).")
+    return None
+
+
+def validate_uploads(uploads: list, description: Any, existing: tuple[int, int]) -> tuple[list[dict], dict]:
+    """Validate a batch of uploaded files (werkzeug FileStorage), all or nothing, including the per-finding
+    limits given the finding's current (count, bytes). Shared by the web UI and the API."""
+    cleaned, problems, errors = [], [], {}
+    uploads = [u for u in uploads if u is not None and (u.filename or u.content_length)]
+    if not uploads:
+        errors["file"] = "Choose at least one file."
+    elif existing[0] + len(uploads) > FILE_MAX_PER_FINDING:
+        errors["file"] = check_file_quota(existing[0], existing[1], [0] * len(uploads))
+        return [], errors  # checked before reading anything into memory
+    for upload in uploads:
+        data = upload.read(FILE_MAX_BYTES + 1)
+        clean, errs = validate_file(upload.filename, description, data)
+        if "description" in errs:
+            errors["description"] = errs["description"]
+        if "file" in errs:
+            problems.append(errs["file"])
+        else:
+            cleaned.append(clean)
+    if problems:
+        errors["file"] = " ".join(problems[:10])
+    if not errors:
+        quota = check_file_quota(*existing, [c["size"] for c in cleaned])
+        if quota:
+            errors["file"] = quota
+    return cleaned, errors
+
+
+def is_sha256(value: Any) -> bool:
+    return isinstance(value, str) and bool(_SHA256_RE.match(value))
+
+
+def is_timestamp(value: Any) -> bool:
+    return isinstance(value, str) and bool(_TIMESTAMP_RE.match(value))
 
 
 # Built-in section kinds; "text" is a custom section whose body is stored with it.

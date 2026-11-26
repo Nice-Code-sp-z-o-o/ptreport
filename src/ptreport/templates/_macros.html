@@ -84,7 +84,7 @@
 {%- endmacro %}
 
 {% macro status_label(status) -%}
-  {%- set icons = {'open': 'circle', 'fixed': 'check-circle', 'risk_accepted': 'shield', 'false_positive': 'slash-circle'} -%}
+  {%- set icons = {'open': 'circle', 'partially_fixed': 'circle-half', 'not_fixed': 'x-circle', 'fixed': 'check-circle', 'risk_accepted': 'shield', 'wont_fix': 'minus-circle', 'false_positive': 'slash-circle', 'not_a_bug': 'slash-circle', 'cannot_verify': 'help-circle'} -%}
   <span class="status status-{{ status }}">{{ icon(icons.get(status, 'circle')) }}<span>{{ STATUS_LABELS['en'][status] }}</span></span>
 {%- endmacro %}
 

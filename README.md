@@ -32,6 +32,8 @@ one SQLite file, no accounts, no cloud.
 - **JSON API** with bearer-token auth (used by the Burp extension)
 - **AI writing assistant** (optional, off by default): draft, improve, translate PL↔EN or shorten finding texts with
   a **local Ollama** model; only loopback addresses are accepted, so nothing leaves the machine
+- **Command line**: list, create and show reports, import scanner files and JSON backups, export to
+  PDF/HTML/Markdown/JSON from a shell or script (`ptreport report list`, `ptreport export 3 --format pdf`)
 
 ## Install (one command)
 
@@ -157,6 +159,38 @@ request; redirects are not followed and proxy variables are ignored). Prompts co
 finding you are editing (title, CWE, severity, the four texts above), never other reports. Model output is treated
 as untrusted text and never rendered as HTML. Requests are rate limited, limited to 20,000 characters per field,
 and time out after 120 s. All prompts are in `src/ptreport/ai.py`.
+
+## Command line
+
+`ptreport` on its own starts the web app (above). With a command it works on the same database directly, so you
+can script it or use it next to the running app (the database is in WAL mode and every change is one transaction).
+`--data-dir` works with every command, before or after it. `ptreport <command> --help` lists all options.
+
+```bash
+ptreport report list                      # table: id, title, client, language, period, findings by severity
+ptreport report list --json               # the same as JSON, for scripts
+ptreport report create --title "ACME web app" --client ACME --assessor "Jan Kowalski" \
+    --language en --prefix ACME --start-date 2026-11-01 --end-date 2026-11-10    # prints the new id
+ptreport report show 3                    # summary plus the findings table (--json too)
+
+ptreport import-scan 3 burp-issues.xml --dry-run   # what would be created; changes nothing
+ptreport import-scan 3 burp-issues.xml             # asks "Import into report #3? [y/N]"
+ptreport import-scan 3 scan.nessus --yes --include-info   # no prompt (needed in scripts / without a terminal)
+
+ptreport export 3 --format pdf            # ./ACME_web_app.pdf (same name as the web download)
+ptreport export 3 --format md -o notes/   # into a directory; -o FILE for a name, -o - for stdout
+ptreport export 3 --format json -o backup.json --force    # --force replaces an existing file
+ptreport import-json backup.json          # restores the backup as a new report, prints its id
+```
+
+`report create` checks its input like the web form (e.g. no digits in assessor names, end date not before the
+start date) and uses the default prefix and language from Settings when you leave them out. `import-scan` takes
+everything the file contains (the web review page with all boxes ticked) and reuses targets already in the report;
+`--format` is `auto` (default), `burp`, `nessus`, `nmap`, `zap` or `openvas`. `export --format` is `pdf`, `html`,
+`md`, `json` or `tex` (LaTeX sources as .zip).
+
+Exit codes: `0` success, `1` error (unknown report, invalid input, file exists, failed PDF...), `2` wrong usage.
+Errors go to stderr.
 
 ## Burp Suite extension
 

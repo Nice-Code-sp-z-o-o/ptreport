@@ -153,8 +153,8 @@ def _build_parser() -> argparse.ArgumentParser:
     exp.add_argument("--force", action="store_true", help="overwrite an existing file")
 
     aii = sub.add_parser(
-        "import-ai", parents=[common], help="queue SARIF / ptai capsule / proposal JSON results for review",
-        description="Read results of an AI agent or analysis tool (SARIF 2.1.0, a ptai proof capsule, ptreport "
+        "import-ai", parents=[common], help="queue SARIF / ptai report or capsule / proposal JSON results for review",
+        description="Read results of an AI agent or analysis tool (SARIF 2.1.0, a ptai JSON report or proof capsule, ptreport "
                     "proposal JSON) and queue them as proposals in the report's AI queue. Nothing reaches the "
                     "report until you accept it in the web app. In a retest report, results matching an existing "
                     "finding are queued as retest results (still present -> not fixed).")

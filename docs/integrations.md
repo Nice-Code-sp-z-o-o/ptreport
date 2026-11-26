@@ -26,7 +26,7 @@ manual input when it arrives *and again* when you accept it, and accepting is al
 |---|---|---|
 | `POST /api/v1/reports/<id>/proposals` | any agent, CI job or script | integration token with scope `propose` (or the main API token) |
 | `ptreport mcp` (MCP server, stdio) | agent clients: Claude Code, Codex, Cursor … | none: it runs as your user, over stdio |
-| Report → **Import AI results** / `ptreport import-ai` | SARIF 2.1.0, ptai proof capsules, proposal JSON files | the web UI / your shell |
+| Report → **Import AI results** / `ptreport import-ai` | SARIF 2.1.0, ptai JSON reports and proof capsules, proposal JSON files | the web UI / your shell |
 
 ## The AI queue
 
@@ -291,7 +291,7 @@ terminal unless `--yes` (or `--dry-run`) is given. Files are limited to 50 MB, m
 levels deep; at most 2000 results are read. Results that fail validation are skipped with a note, the rest are
 queued. Identical results are queued once.
 
-**SARIF 2.1.0** (`ptai export <engagement> --sarif pentest.sarif`, Semgrep, CodeQL, …):
+**SARIF 2.1.0** (Semgrep, CodeQL, `ptai export <engagement> -o verified.sarif`, …):
 
 | SARIF | ptreport |
 |---|---|
@@ -307,6 +307,19 @@ queued. Identical results are queued once.
 
 Skipped: results of kind `pass` / `notApplicable`, results with `baselineState: "absent"`, suppressed results,
 and results with `verdict: "refuted"`.
+
+> **From ptai, import the JSON report rather than SARIF.** ptai 1.6's SARIF export has one rule per category
+> (all injections share `pentest-ai/injection`) and empty result messages, so a SQL injection and an XSS both get
+> the title of the first injection found, and SARIF has no "critical" level. ptreport warns when it sees such a
+> file. The JSON report keeps every finding intact.
+
+**ptai JSON report** (`ptai report <engagement> -f json -o ptai.json`): one proposal per finding, with ptai's
+title, severity (including critical), verdict (`verified` / `candidate`; `refuted` is skipped), the oracle
+receipt (oracle, replay counts, oracle result), the evidence excerpt, `poc` as PoC, `remediation`, the target
+URL and the engagement id as the run. The CWE comes from `cwe_id`, else ptai's verification oracle
+(`http_reflect` → CWE-79, `path_traversal` → CWE-22, `sqli_login_bypass` → CWE-89, `open_redirect` → CWE-601)
+or category (`info_disclosure` → CWE-200, `security_misconfig` → CWE-693). Tested on a real ptai 1.6.2
+engagement (`tests/fixtures/ai/ptai-report.json`).
 
 **ptai proof capsule** (`capsule_schema_version: 1`, from `ptai demo` or pentest-ai's capsule builder; one
 capsule, a list, or `{"capsules": [...]}`): title, severity, target, `bug_class` (mapped to a CWE where
@@ -360,9 +373,9 @@ targets and the window, send results as proposals, include proof.
 
 1. In ptreport, open the original report and click **Create retest report**. Note the new report's id (say 7).
 2. Re-test with pentest-ai: `ptai retest <engagement>` scans the target again (`ptai diff` shows what changed).
-3. Export the result: `ptai export <engagement> --sarif retest.sarif` (or keep the proof capsules of the
+3. Export the result: `ptai report <engagement> -f json -o retest.json` (or keep the proof capsules of the
    re-verified findings).
-4. Import it into the **retest report**: `ptreport import-ai 7 retest.sarif --dry-run`, then without
+4. Import it into the **retest report**: `ptreport import-ai 7 retest.json --dry-run`, then without
    `--dry-run` (or Report → *Import AI results*). Results that match a finding of the report are queued as
    **retest results "not fixed"** with their evidence; new results are queued as new findings.
 5. In the AI queue, **Apply retest result** for each confirmed one. For findings ptai no longer reports,

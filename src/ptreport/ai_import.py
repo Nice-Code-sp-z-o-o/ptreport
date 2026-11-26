@@ -4,7 +4,7 @@ Every file becomes *proposals* (see :mod:`ptreport.proposals`); nothing is writt
 is untrusted: size limit, UTF-8 only, nesting depth limit, every value type-checked, and every proposal goes
 through the proposal validators (invalid ones are skipped with a warning, the rest is imported).
 
-* **SARIF 2.1.0** (``ptai export --sarif``, Semgrep, CodeQL, ...): one finding proposal per result. Title from the
+* **SARIF 2.1.0** (Semgrep, CodeQL, ``ptai export``, ...): one finding proposal per result. Title from the
   rule's shortDescription / name or the message; severity from ``properties.security-severity`` (0-10) or the
   level; CWE from rule tags (``CWE-79``, ``external/cwe/cwe-79``), properties or a ``CWE-n`` rule id; URL locations
   become targets, file locations code evidence (with the region's snippet); ``webRequest`` / ``webResponse`` become
@@ -14,6 +14,9 @@ through the proposal validators (invalid ones are skipped with a warning, the re
   finding, the receipt's verdict, oracle and replay counts, request/response when the receipt has them; the
   capsule itself is attached as an evidence file. A refuted verdict is skipped; an integrity mismatch is reported
   and downgrades ``verified`` to ``candidate``.
+* **ptai JSON report** (``ptai report <id> -f json``): every finding of the engagement with its verdict, receipt,
+  evidence excerpt, PoC and remediation. Prefer it to ptai's SARIF export, which groups results per category and
+  leaves their messages empty (titles there come from the first finding of each category).
 * **ptreport proposal JSON v1**: as documented in ``docs/integrations.md``.
 """
 
@@ -32,7 +35,8 @@ from urllib.parse import urlsplit
 from ptreport import proposals, repo
 
 FORMATS = ("sarif", "ptai", "ptreport")
-LABELS = {"sarif": "SARIF 2.1.0", "ptai": "ptai proof capsule", "ptreport": "ptreport proposal JSON"}
+LABELS = {"sarif": "SARIF 2.1.0", "ptai": "ptai proof capsule or JSON report",
+          "ptreport": "ptreport proposal JSON"}
 MAX_BYTES = 50 * 1024 * 1024
 MAX_DEPTH = 64
 MAX_RESULTS = 2000
@@ -48,6 +52,14 @@ BUG_CLASS_CWE = {
     "csrf": "CWE-352", "cors_misconfiguration": "CWE-942", "deserialization": "CWE-502", "jwt_none": "CWE-347",
     "crlf_injection": "CWE-93", "header_injection": "CWE-113", "nosql_injection": "CWE-943",
 }
+# ptai verification oracles and finding categories -> CWE
+ORACLE_CWE = {
+    "http_reflect": "CWE-79", "unescaped_reflection": "CWE-79", "path_traversal": "CWE-22",
+    "open_redirect": "CWE-601", "sqli_login_bypass": "CWE-89", "sqli_error": "CWE-89", "sqli_boolean": "CWE-89",
+    "sqli_time": "CWE-89", "ssrf": "CWE-918", "ssti": "CWE-1336", "command_injection": "CWE-78",
+}
+CATEGORY_CWE = {"redirect": "CWE-601", "info_disclosure": "CWE-200", "security_misconfig": "CWE-693",
+                "xss": "CWE-79", "sqli": "CWE-89", "ssrf": "CWE-918", "idor": "CWE-639", "csrf": "CWE-352"}
 _LEVEL_SEVERITY = {"error": "high", "warning": "medium", "note": "low", "none": "info"}
 _LANG_BY_EXT = {"c": "c", "h": "c", "cc": "cpp", "cpp": "cpp", "cxx": "cpp", "hpp": "cpp", "hh": "cpp",
                 "s": "asm", "asm": "asm", "java": "java", "kt": "java", "py": "python"}
@@ -99,6 +111,8 @@ def detect(doc: Any) -> str | None:
                 doc.get("version") == "2.1.0" or "sarif" in str(doc.get("$schema", "")).lower()):
             return "sarif"
         if "capsule_schema_version" in doc or isinstance(doc.get("capsules"), list):
+            return "ptai"
+        if isinstance(doc.get("engagement"), dict) and isinstance(doc.get("findings"), list):
             return "ptai"
         if doc.get("format") == proposals.SCHEMA_FORMAT or "kind" in doc:
             return "ptreport"
@@ -378,7 +392,14 @@ def _parse_sarif(doc: dict, warnings: list) -> list[dict]:
             _s(_d(invocation.get("properties")).get("engagement_id"), 100)
         tool = {"tool": _s(driver.get("name"), 100) or "SARIF",
                 "version": _s(driver.get("version") or driver.get("semanticVersion"), 50), "run_id": run_id}
-        for result in map(_d, _l(run.get("results"), MAX_RESULTS + 1)):
+        results = list(map(_d, _l(run.get("results"), MAX_RESULTS + 1)))
+        if "pentest-ai" in tool["tool"].lower() or tool["tool"].lower() == "ptai":
+            blank = [r.get("ruleId") for r in results if not _msg(r.get("message")).strip()]
+            if len(blank) > len(set(blank)):
+                warnings.append("This ptai SARIF groups several findings under one rule with an empty message, so "
+                                "their titles may be wrong. Import `ptai report <id> -f json` instead for exact "
+                                "titles, severities and verdicts.")
+        for result in results:
             total += 1
             if total > MAX_RESULTS:
                 warnings.append(f"Only the first {MAX_RESULTS} results were read.")
@@ -403,19 +424,26 @@ def capsule_integrity(capsule: dict) -> str:
                           .encode("utf-8")).hexdigest()
 
 
-def _parse_capsule(cap: dict, raw: bytes | None, warnings: list) -> dict | None:
-    finding, receipt = _d(cap.get("finding")), _d(cap.get("receipt"))
-    if cap.get("capsule_schema_version") != 1:
-        warnings.append(f"Capsule schema version {str(cap.get('capsule_schema_version'))[:10]!r} is not 1; read "
-                        "with the version 1 fields.")
+def _ptai_cwe(finding: dict, recipe: dict, oracle: str) -> str:
+    for key in (_s(finding.get("bug_class"), 100).lower(), _s(recipe.get("oracle"), 100).lower(), oracle.lower()):
+        if key in BUG_CLASS_CWE:
+            return BUG_CLASS_CWE[key]
+        if key in ORACLE_CWE:
+            return ORACLE_CWE[key]
+    return CATEGORY_CWE.get(_s(finding.get("category"), 100).lower(), "")
+
+
+def _ptai_item(finding: dict, receipt: dict, warnings: list, *, source: dict, integrity: Any = None,
+               integrity_ok: bool = False, capsule_blob: bytes | None = None, from_capsule: bool = True) -> dict | None:
+    """One ptai finding (+ its oracle receipt) as a finding proposal; None when ptai refuted it."""
     title = _s(finding.get("title"), 300) or _s(finding.get("bug_class"), 300) or "ptai finding"
     verdict = receipt.get("verdict") if isinstance(receipt.get("verdict"), str) else ""
+    if not verdict and isinstance(finding.get("verdict"), str):
+        verdict = finding["verdict"]
     if verdict == "refuted":
         warnings.append(f"{title[:80]}: refuted by ptai's verifier, skipped.")
         return None
     verdict = verdict if verdict in ("verified", "candidate") else ""
-    integrity = cap.get("integrity_sha256")
-    integrity_ok = isinstance(integrity, str) and integrity == capsule_integrity(cap)
     if isinstance(integrity, str) and not integrity_ok:
         warnings.append(f"{title[:80]}: the capsule's integrity SHA-256 does not match its content (edited after "
                         "ptai built it)" + ("; verdict lowered to candidate." if verdict == "verified" else "."))
@@ -424,9 +452,9 @@ def _parse_capsule(cap: dict, raw: bytes | None, warnings: list) -> dict | None:
     severity = _s(finding.get("severity"), 20).lower()
     severity = proposals.SEVERITY_ALIASES.get(severity, severity)
     if severity not in ("critical", "high", "medium", "low", "info"):
-        warnings.append(f"{title[:80]}: no usable severity in the capsule, set to info; adjust it when you accept.")
+        warnings.append(f"{title[:80]}: no usable severity from ptai, set to info; adjust it when you accept.")
         severity = "info"
-    bug_class = _s(finding.get("bug_class"), 100)
+    bug_class = _s(finding.get("bug_class"), 100) or _s(finding.get("category"), 100)
     target_url = _s(finding.get("target"), 2048)
     recipe = _d(finding.get("verification_recipe"))
     evidence = _d(receipt.get("evidence"))
@@ -435,7 +463,7 @@ def _parse_capsule(cap: dict, raw: bytes | None, warnings: list) -> dict | None:
 
     details = []
     if bug_class:
-        details.append(f"Bug class: `{bug_class}`")
+        details.append(f"{'Bug class' if finding.get('bug_class') else 'Category'}: `{bug_class}`")
     if target_url:
         details.append(f"Target: {target_url}")
     line = f"Verification: {verdict or 'no verdict'}"
@@ -460,33 +488,79 @@ def _parse_capsule(cap: dict, raw: bytes | None, warnings: list) -> dict | None:
     technical = "\n".join(f"- {d}" for d in details)
     excerpt = _t(finding.get("evidence"), 4000)
     if excerpt:
-        technical += "\n\nResponse excerpt:\n\n" + _fence(excerpt)
-    poc = ""
+        technical += "\n\nEvidence excerpt:\n\n" + _fence(excerpt)
+    poc_parts = []
+    if _t(finding.get("poc"), 20_000):
+        poc_parts.append(_fence(_t(finding.get("poc"), 20_000), "bash"))
     if _t(replay.get("curl"), 20_000):
-        poc = "Replay request:\n\n" + _fence(_t(replay.get("curl"), 20_000), "bash")
-    poc = (poc + "\n\n" if poc else "") + "Re-check the proof with `ptai replay` on the attached capsule."
+        poc_parts.append("Replay request:\n\n" + _fence(_t(replay.get("curl"), 20_000), "bash"))
+    poc_parts.append("Re-check the proof with `ptai replay` on the attached capsule." if from_capsule else
+                     "Re-check it with `ptai retest` on the engagement.")
+    description = _t(finding.get("description"), 50_000)
+    note = f"Reported by pentest-ai (ptai); verdict of its verifier: {verdict or 'none'}."
+    vector = finding.get("cvss_vector")
 
     data: dict[str, Any] = {
-        "title": title, "severity": severity, "cwe": _cwe_from(finding.get("cwe_id"), finding.get("cwe")) or
-        BUG_CLASS_CWE.get(bug_class.lower(), ""),
-        "description": f"Reported by pentest-ai (ptai); verdict of its verifier: {verdict or 'none'}.",
-        "technical_details": technical, "poc": poc,
+        "title": title, "severity": severity,
+        "cwe": _cwe_from(finding.get("cwe_id"), finding.get("cwe")) or _ptai_cwe(finding, recipe, oracle),
+        "description": f"{description}\n\n{note}" if description else note,
+        "technical_details": technical, "poc": "\n\n".join(poc_parts),
+        "remediation": _t(finding.get("remediation"), 50_000),
         "targets": [proposals.target_from_address(target_url)] if target_url else [],
         "evidence": [], "code_evidence": [], "files": [], "match": {"rule_id": bug_class}}
+    if isinstance(vector, str) and vector.startswith(("CVSS:", "AV:")):
+        data["cvss_vector"] = _s(vector, 512)
     request = _t(evidence.get("request"), 5_000_000)
     if request:
         data["evidence"].append({"title": f"{title} (ptai {oracle or 'verifier'})"[:300], "request": request,
                                  "response": _t(evidence.get("response"), 5_000_000)})
-    blob = raw if raw is not None else json.dumps(cap, ensure_ascii=False, indent=2).encode("utf-8")
-    if len(blob) <= 25 * 1024 * 1024:
+    if capsule_blob is not None and len(capsule_blob) <= 25 * 1024 * 1024:
         name = re.sub(r"[^A-Za-z0-9._-]+", "_", _s(finding.get("id"), 60)) or "finding"
         data["files"].append({"filename": f"ptai-capsule-{name}.json", "description": "ptai proof capsule",
-                              "data_base64": base64.b64encode(blob).decode("ascii")})
-    source = {"tool": "ptai", "version": _s(cap.get("ptai_version"), 50), "run_id": _s(finding.get("id"), 100)}
+                              "data_base64": base64.b64encode(capsule_blob).decode("ascii")})
     return {"kind": "finding", "verdict": verdict, "source": source, "data": data}
 
 
+def _parse_capsule(cap: dict, raw: bytes | None, warnings: list) -> dict | None:
+    if cap.get("capsule_schema_version") != 1:
+        warnings.append(f"Capsule schema version {str(cap.get('capsule_schema_version'))[:10]!r} is not 1; read "
+                        "with the version 1 fields.")
+    finding = _d(cap.get("finding"))
+    integrity = cap.get("integrity_sha256")
+    blob = raw if raw is not None else json.dumps(cap, ensure_ascii=False, indent=2).encode("utf-8")
+    source = {"tool": "ptai", "version": _s(cap.get("ptai_version"), 50), "run_id": _s(finding.get("id"), 100)}
+    return _ptai_item(finding, _d(cap.get("receipt")), warnings, source=source, integrity=integrity,
+                      integrity_ok=isinstance(integrity, str) and integrity == capsule_integrity(cap),
+                      capsule_blob=blob)
+
+
+def _parse_ptai_report(doc: dict, warnings: list) -> list[dict]:
+    """``ptai report <id> -f json``: {engagement, summary, findings: [...]}."""
+    engagement = _d(doc.get("engagement"))
+    source = {"tool": "ptai", "version": "", "run_id": _s(engagement.get("id"), 100)}
+    items = []
+    for i, finding in enumerate(_l(doc.get("findings"), MAX_RESULTS + 1)):
+        if i >= MAX_RESULTS:
+            warnings.append(f"Only the first {MAX_RESULTS} findings were read.")
+            break
+        if not isinstance(finding, dict):
+            warnings.append(f"Finding #{i + 1}: not an object, skipped.")
+            continue
+        receipt = _d(finding.get("receipt"))
+        if not receipt and isinstance(finding.get("receipt_json"), str):
+            try:
+                receipt = _d(json.loads(finding["receipt_json"][:1_000_000]))
+            except ValueError:
+                receipt = {}
+        item = _ptai_item(finding, receipt, warnings, source=source, from_capsule=False)
+        if item:
+            items.append(item)
+    return items
+
+
 def _parse_ptai(doc: Any, raw: bytes, warnings: list) -> list[dict]:
+    if isinstance(doc, dict) and isinstance(doc.get("engagement"), dict) and isinstance(doc.get("findings"), list):
+        return _parse_ptai_report(doc, warnings)
     if isinstance(doc, dict) and "capsule_schema_version" in doc:
         capsules, single = [doc], True
     else:
@@ -511,7 +585,8 @@ def parse(data: bytes, fmt: str | None = None) -> dict:
     doc = load_json(data)
     detected = detect(doc)
     if detected is None:
-        raise ImportError_("Unrecognised file: expected SARIF 2.1.0, a ptai proof capsule or ptreport proposal JSON.")
+        raise ImportError_("Unrecognised file: expected SARIF 2.1.0, a ptai proof capsule or JSON report, or "
+                          "ptreport proposal JSON.")
     if fmt is not None and fmt != detected:
         raise ImportError_(f"The file looks like {LABELS[detected]}, not {LABELS[fmt]}.")
     warnings: list[str] = []

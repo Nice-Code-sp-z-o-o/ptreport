@@ -1,0 +1,229 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/sarif-2.1/schema/sarif-schema-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "pentest-ai",
+          "version": "1.6.2",
+          "informationUri": "https://github.com/0xSteph/pentest-ai",
+          "rules": [
+            {
+              "id": "pentest-ai/injection",
+              "name": "Path traversal: linux_etc_passwd disclosed on http://127.0.0.1:8002/files?name=..%2F..%2F..%2Fetc%2Fpasswd",
+              "shortDescription": {
+                "text": "Path traversal: linux_etc_passwd disclosed on http://127.0.0.1:8002/files?name=..%2F..%2F..%2Fetc%2Fpasswd"
+              },
+              "fullDescription": {
+                "text": "Path traversal: linux_etc_passwd disclosed on http://127.0.0.1:8002/files?name=..%2F..%2F..%2Fetc%2Fpasswd"
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "help": {
+                "text": "Validate the file argument against an allowlist of known filenames. Resolve the user-supplied path and confirm the result is under the intended base directory before opening it (e.g. werkzeug.utils.safe_join). Never concatenate user input into a filesystem path with no constraint."
+              }
+            },
+            {
+              "id": "pentest-ai/redirect",
+              "name": "Open Redirect via parameter 'to'",
+              "shortDescription": {
+                "text": "Open Redirect via parameter 'to'"
+              },
+              "fullDescription": {
+                "text": "The endpoint accepted an attacker-controlled URL in the 'to' parameter and issued a redirect to an external host. This can be abused for phishing and OAuth credential theft. URL: http://127.0.0.1:8002/go?to=https%3A%2F%2Fexample.org%2Fptai-canary. Server returned Location: https://example.org/ptai-canary"
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              },
+              "help": {
+                "text": "Validate redirect targets against an allowlist of known-good destinations or use relative paths only."
+              }
+            },
+            {
+              "id": "pentest-ai/security_misconfig",
+              "name": "Missing security headers (5)",
+              "shortDescription": {
+                "text": "Missing security headers (5)"
+              },
+              "fullDescription": {
+                "text": "Missing security headers (5)"
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              },
+              "help": {
+                "text": "Add the missing response headers. CSP (Content-Security-Policy) restricts script/style sources; X-Frame-Options blocks clickjacking; X-Content-Type-Options: nosniff stops MIME-sniff attacks; Referrer-Policy controls referrer leaks; Permissions-Policy gates browser features; Strict-Transport-Security forces HTTPS for one year (HTTPS only)."
+              }
+            },
+            {
+              "id": "pentest-ai/info_disclosure",
+              "name": "Information disclosure header: Server",
+              "shortDescription": {
+                "text": "Information disclosure header: Server"
+              },
+              "fullDescription": {
+                "text": "Information disclosure header: Server"
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              },
+              "help": {
+                "text": "Remove or generalise the Server header. It hands fingerprinters the framework + version, enabling targeted CVE lookups. Most app servers expose a config knob (e.g. server_tokens off; in nginx; expose_php=Off in php.ini; remove WSGIServerHeader in mod_wsgi)."
+              }
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "pentest-ai/injection",
+          "ruleIndex": 0,
+          "level": "error",
+          "message": {
+            "text": ""
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "http://127.0.0.1:8002/files?name=..%2F..%2F..%2Fetc%2Fpasswd"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "pentest-ai/injection",
+          "ruleIndex": 0,
+          "level": "error",
+          "message": {
+            "text": ""
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "http://127.0.0.1:8002/login"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "pentest-ai/injection",
+          "ruleIndex": 0,
+          "level": "error",
+          "message": {
+            "text": ""
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "http://127.0.0.1:8002/search"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "pentest-ai/redirect",
+          "ruleIndex": 1,
+          "level": "warning",
+          "message": {
+            "text": "The endpoint accepted an attacker-controlled URL in the 'to' parameter and issued a redirect to an external host. This can be abused for phishing and OAuth credential theft. URL: http://127.0.0.1:8002/go?to=https%3A%2F%2Fexample.org%2Fptai-canary. Server returned Location: https://example.org/ptai-canary"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "http://127.0.0.1:8002/go?to=https%3A%2F%2Fexample.org%2Fptai-canary"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "pentest-ai/injection",
+          "ruleIndex": 0,
+          "level": "warning",
+          "message": {
+            "text": ""
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "http://127.0.0.1:8002/search?q=%3Cscript%3Ealert%28%27ptai%27%29%3C%2Fscript%3E"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "pentest-ai/injection",
+          "ruleIndex": 0,
+          "level": "warning",
+          "message": {
+            "text": ""
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "http://127.0.0.1:8002/search?q=%3Ciframe%20src%3D%22javascript%3Aalert%28%60xss%60%29%22%3E"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "pentest-ai/security_misconfig",
+          "ruleIndex": 2,
+          "level": "note",
+          "message": {
+            "text": ""
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "http://127.0.0.1:8002"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "pentest-ai/info_disclosure",
+          "ruleIndex": 3,
+          "level": "note",
+          "message": {
+            "text": ""
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "http://127.0.0.1:8002"
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "invocations": [
+        {
+          "executionSuccessful": true,
+          "properties": {
+            "engagement_id": "6f4854e0",
+            "target": "http://127.0.0.1:8002/",
+            "scope": "web"
+          }
+        }
+      ]
+    }
+  ]
+}

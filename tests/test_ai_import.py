@@ -422,3 +422,61 @@ def test_binary_and_firmware_targets(client, csrf, make_report):
     assert "Plik wykonywalny" in md
     resp = client.post(f"/reports/{report_id}/targets/new", data={"_csrf": csrf, "name": "x", "kind": "toaster"})
     assert resp.status_code == 422
+
+
+# ------------------------------------------------- real ptai engagement output --
+
+def test_ptai_json_report_real_output():
+    parsed = ai_import.parse(_bytes("ptai-report.json"))
+    assert parsed["format"] == "ptai"
+    items = parsed["items"]
+    def by_title(prefix):
+        return next(i for i in items if i["data"]["title"].startswith(prefix))
+
+    assert len(items) == 8
+    traversal = by_title("Path traversal")
+    assert traversal["verdict"] == "verified"
+    assert traversal["data"]["severity"] == "critical"
+    assert traversal["data"]["cwe"] == "CWE-22"
+    assert "idempotent_replay" in traversal["data"]["technical_details"]
+    assert "replayed 3/3" in traversal["data"]["technical_details"]
+    assert "root:x:0:0" in traversal["data"]["technical_details"]
+    assert "curl" in traversal["data"]["poc"]
+    assert traversal["data"]["remediation"].startswith("Validate the file argument")
+    assert traversal["data"]["targets"][0]["address"].startswith("http://127.0.0.1:8002")
+    assert traversal["source"] == {"tool": "ptai", "version": "", "run_id": "6f4854e0"}
+    sqli = by_title("SQLi login bypass")
+    assert (sqli["verdict"], sqli["data"]["severity"], sqli["data"]["cwe"]) == ("candidate", "critical", "CWE-89")
+    assert {i["data"]["cwe"] for i in items if "XSS" in i["data"]["title"]} == {"CWE-79"}
+    assert by_title("Open Redirect")["data"]["cwe"] == "CWE-601"
+    assert by_title("Missing security headers")["data"]["cwe"] == "CWE-693"
+    assert all(not i["data"]["files"] for i in items)  # no capsule to attach for a report
+
+
+def test_ptai_json_report_refuted_and_receipt_json(tmp_path):
+    doc = json.loads(_bytes("ptai-report.json"))
+    doc["findings"][0]["verdict"] = "refuted"
+    doc["findings"][0].pop("receipt")
+    doc["findings"][0]["receipt_json"] = json.dumps({"verdict": "refuted"})
+    doc["findings"][1] = "not an object"
+    parsed = ai_import.parse(json.dumps(doc).encode())
+    assert len(parsed["items"]) == 6
+    assert any("refuted" in w for w in parsed["warnings"])
+    assert any("not an object" in w for w in parsed["warnings"])
+
+
+def test_ptai_real_sarif_warns_about_grouped_rules():
+    parsed = ai_import.parse(_bytes("ptai-real.sarif"))
+    assert parsed["format"] == "sarif"
+    assert any("ptai report <id> -f json" in w for w in parsed["warnings"])
+    # the hand-written SARIF has a message per result: no warning
+    assert not any("-f json" in w for w in ai_import.parse(_bytes("ptai.sarif"))["warnings"])
+
+
+def test_web_import_of_ptai_json_report(client, csrf, make_report):
+    report = make_report()
+    r = _upload(client, csrf, report, "ptai-report.json")
+    assert r.status_code == 302
+    conn = _conn(client)
+    rows = conn.execute("SELECT kind, verdict FROM ai_proposals WHERE report_id = ?", (report,)).fetchall()
+    assert len(rows) == 8 and sum(1 for r in rows if r["verdict"] == "verified") == 5

@@ -270,7 +270,7 @@ small **AI** badge, and get a history entry.
 
 ```bash
 claude mcp add ptreport -- ptreport mcp --report 3     # MCP server over stdio (Codex / Cursor: see the docs)
-ptreport import-ai 3 pentest.sarif --dry-run           # SARIF 2.1.0, ptai proof capsules, proposal JSON
+ptreport import-ai 3 pentest.sarif --dry-run           # SARIF 2.1.0, ptai JSON reports and capsules, proposal JSON
 ptreport scope 3 --format md                           # the engagement brief to start an agent from
 ```
 

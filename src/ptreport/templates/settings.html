@@ -108,6 +108,39 @@
     {% if custom_latex %}<div>{{ post_button(url_for('web.settings_latex_reset'), 'Use the default template', 'btn btn-danger', 'Remove the custom template and go back to the default?') }}</div>{% endif %}
   </section>
 
+  <section class="panel stack" id="ai-assistant" aria-labelledby="ai-h"
+           data-ai-settings data-models-url="{{ url_for('web.settings_ai_models') }}" data-test-url="{{ url_for('web.settings_ai_test') }}">
+    <h2 id="ai-h">AI assistant (local)</h2>
+    <p class="prose">Optional help with writing findings: draft a text from the title and CWE, improve the wording, translate between Polish and English or shorten it. It uses a <strong>local <a href="https://ollama.com" target="_blank" rel="noopener noreferrer">Ollama</a></strong> server: only addresses on this machine are accepted, so nothing leaves it. Suggestions are never saved without your click.</p>
+    {% if ai_errors %}<p class="field-error" role="alert">{{ icon('alert') }}<span>Please fix the highlighted fields.</span></p>{% endif %}
+    <form method="post" action="{{ url_for('web.settings_ai') }}" class="stack" novalidate data-validate>
+      <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+      <label class="check check-wide"><input type="checkbox" name="enabled" value="1"{% if ai_values.get('enabled') %} checked{% endif %}>
+        <span class="check-text"><strong>Enable the writing assistant</strong><span class="muted small">Shows “Assist” menus next to Description, Impact, Technical details and Remediation on the finding form.</span></span></label>
+      <div class="grid-2">
+        {{ input('url', 'Ollama URL', ai_values, ai_errors, required=True, maxlength=200, mono=True, prefix='ai-',
+                 placeholder='http://127.0.0.1:11434', hint='http(s) on 127.0.0.1, ::1 or localhost only.') }}
+        <div class="field">
+          <label for="f-ai-model">Model</label>
+          <div class="input-row">
+            <input class="input is-mono" id="f-ai-model" name="model" value="{{ ai_values.get('model') or '' }}" maxlength="100"
+              pattern="[A-Za-z0-9][A-Za-z0-9._:/+\-]{0,99}" title="e.g. qwen2.5:3b" placeholder="qwen2.5:3b" list="ai-model-list" autocomplete="off"
+              {%- if ai_errors.get('model') %} aria-invalid="true" aria-describedby="ai-model-error"{% endif %}>
+            <button class="btn" type="button" data-ai-load hidden>{{ icon('download') }}Load models</button>
+          </div>
+          <datalist id="ai-model-list"></datalist>
+          <p class="hint" data-ai-models-hint>Models installed in Ollama (<code>ollama list</code>). Small models (3–8B) are fast enough on a laptop GPU.</p>
+          {% if ai_errors.get('model') %}<p class="field-error" id="ai-model-error">{{ icon('alert') }}<span>{{ ai_errors['model'] }}</span></p>{% endif %}
+        </div>
+      </div>
+      <p class="ai-result" data-ai-result role="status" aria-live="polite" hidden></p>
+      <div class="cluster">
+        <button class="btn btn-primary" type="submit">Save assistant settings</button>
+        <button class="btn" type="button" data-ai-test hidden>{{ icon('check-circle') }}Test connection</button>
+      </div>
+    </form>
+  </section>
+
   <section class="panel stack" aria-labelledby="api-h">
     <h2 id="api-h">API access (Burp extension)</h2>
     <p class="prose">The Burp extension talks to <code>{{ api_base }}</code> and authenticates with this bearer token.</p>
@@ -132,3 +165,4 @@
   </section>
 </div>
 {% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='ai.js') }}"></script>{% endblock %}

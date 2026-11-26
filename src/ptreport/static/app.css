@@ -121,3 +121,27 @@ span.label { display: block; margin-bottom: var(--sp-2); font-size: var(--fs-sm)
 .editor-canvas { display: block; cursor: crosshair; touch-action: none; box-shadow: 0 0 0 1px var(--c-line), var(--shadow-overlay); }
 .editor-foot { justify-content: space-between; align-items: center; }
 .editor-foot .editor-hint, .editor-foot .field-error { flex: 1 1 24rem; margin: 0; }
+
+/* Writing assistant (local Ollama) */
+.field-head { display: flex; align-items: center; gap: var(--sp-3); min-height: var(--h-sm); }
+.field-head > label { font-size: var(--fs-sm); font-weight: var(--fw-semibold); }
+.ai-menu > summary { color: var(--c-muted); }
+.ai-menu > summary:is(:hover, .is-hover), .ai-menu[open] > summary { color: var(--c-text); }
+.ai-menu .dropdown-menu { min-width: 260px; }
+button.menu-item { width: 100%; font: inherit; text-align: left; background: none; border: 0; cursor: pointer; }
+button.menu-item:disabled { color: var(--c-muted); cursor: not-allowed; }
+.input-row { display: flex; gap: var(--sp-2); align-items: center; }
+.input-row .input { flex: 1 1 auto; min-width: 0; width: auto; }
+.check-wide { max-width: var(--measure); }
+.ai-result { display: flex; gap: var(--sp-2); align-items: flex-start; max-width: var(--measure); font-size: var(--fs-sm); color: var(--c-ok); }
+.ai-result.is-error { color: var(--c-danger); }
+.ai-result .icon { flex: none; margin-top: 1px; }
+.modal.modal-ai { width: min(760px, calc(100vw - 2 * var(--sp-4))); max-height: calc(100vh - 2 * var(--sp-5)); display: none; flex-direction: column; }
+.modal.modal-ai[open] { display: flex; }
+.modal-ai-body { position: relative; flex: 1 1 auto; min-height: 12rem; overflow: auto; padding: var(--sp-5); }
+.modal-ai-body .textarea { min-height: 14rem; max-width: none; }
+.ai-status { display: flex; align-items: center; justify-content: center; gap: var(--sp-3); min-height: 10rem; padding: var(--sp-5); color: var(--c-muted); text-align: center; }
+.ai-status .icon { flex: none; width: 20px; height: 20px; animation: spin 900ms linear infinite; }
+.ai-status.is-error { color: var(--c-danger); }
+.ai-status.is-error .icon { animation: none; }
+@media (prefers-reduced-motion: reduce) { .ai-status .icon { animation: none; } }

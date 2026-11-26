@@ -33,9 +33,16 @@ from ptreport.validation import (
     SEVERITY_RANK,
     SHORT,
     normalize_cwe,
+    validate_evidence,
+    validate_finding,
+    validate_target,
 )
 
 FORMATS = ("burp", "nessus", "nmap", "zap", "openvas")
+LABELS = {"burp": "Burp Suite (XML)", "nessus": "Nessus (.nessus)", "nmap": "Nmap (XML, targets only)",
+          "zap": "OWASP ZAP (XML)", "openvas": "OpenVAS / Greenbone (XML)"}
+MAX_IMPORTED_FINDINGS = 2000
+MAX_IMPORTED_TARGETS = 5000
 MAX_BYTES = 50 * 1024 * 1024
 RESPONSE_MAX = 200_000
 OUTPUT_MAX = 20_000  # per-host scanner output kept in technical details
@@ -759,3 +766,39 @@ def parse(data: bytes, fmt: str | None = None, include_info: bool = False) -> di
     res = _Result(detected, include_info)
     _PARSERS[detected](root, res)
     return res.done()
+
+
+def clean(parsed: dict) -> dict:
+    """Run the importer output through the same validators as manual input; drop what does not pass.
+
+    Shared by the web upload and ``ptreport import-scan``; the result is what gets staged/applied."""
+    warnings = list(parsed.get("warnings", []))
+    findings = []
+    for f in parsed["findings"][:MAX_IMPORTED_FINDINGS]:
+        clean_f, errors = validate_finding({**f, "status": "open"}, target_ids_raw=[])
+        if errors:
+            warnings.append(f"Skipped \"{f.get('title', '')[:80]}\": " + "; ".join(errors.values()))
+            continue
+        evidence = []
+        for e in f.get("evidence", []):
+            ev, ev_errors = validate_evidence({**e, "source": "import"})
+            if not ev_errors:
+                evidence.append(ev)
+        clean_f.pop("target_ids", None)
+        findings.append({**clean_f, "key": f["key"], "target_keys": list(f.get("target_keys", [])),
+                         "evidence": evidence})
+    if len(parsed["findings"]) > MAX_IMPORTED_FINDINGS:
+        warnings.append(f"Only the first {MAX_IMPORTED_FINDINGS} findings were read.")
+    targets = []
+    for t in parsed["targets"][:MAX_IMPORTED_TARGETS]:
+        clean_t, errors = validate_target(t)
+        if errors:
+            warnings.append(f"Skipped target \"{t.get('name', '')[:80]}\": " + "; ".join(errors.values()))
+            continue
+        targets.append({**clean_t, "key": t["key"]})
+    if len(parsed["targets"]) > MAX_IMPORTED_TARGETS:
+        warnings.append(f"Only the first {MAX_IMPORTED_TARGETS} targets were read.")
+    known = {t["key"] for t in targets}
+    for f in findings:
+        f["target_keys"] = [k for k in f["target_keys"] if k in known]
+    return {"format": parsed["format"], "targets": targets, "findings": findings, "warnings": warnings}

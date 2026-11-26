@@ -90,11 +90,11 @@
 
     <section class="panel stack-lg" aria-labelledby="writeup-h">
       <h2 id="writeup-h">Write-up</h2>
-      {{ textarea('description', 'Description', values, errors, rows=6, hint='What the vulnerability is and where it was found.') }}
-      {{ textarea('impact', 'Impact', values, errors, rows=4, hint='What an attacker can achieve.') }}
-      {{ textarea('technical_details', 'Technical details', values, errors, rows=8, mono=True, hint='Root cause, affected parameters/endpoints, versions. Use ``` fences for code.') }}
+      {{ textarea('description', 'Description', values, errors, rows=6, hint='What the vulnerability is and where it was found.', assist=(report.language if ai_enabled else None)) }}
+      {{ textarea('impact', 'Impact', values, errors, rows=4, hint='What an attacker can achieve.', assist=(report.language if ai_enabled else None)) }}
+      {{ textarea('technical_details', 'Technical details', values, errors, rows=8, mono=True, hint='Root cause, affected parameters/endpoints, versions. Use ``` fences for code.', assist=(report.language if ai_enabled else None)) }}
       {{ textarea('poc', 'Proof of Concept', values, errors, rows=10, mono=True, hint='Reproduction steps, payloads, commands. Raw HTTP requests/responses go in "HTTP evidence" below.') }}
-      {{ textarea('remediation', 'Remediation', values, errors, rows=5) }}
+      {{ textarea('remediation', 'Remediation', values, errors, rows=5, assist=(report.language if ai_enabled else None)) }}
       {{ textarea('refs', 'References', values, errors, rows=3, mono=True, hint='One per line. http(s) links become clickable in the report.') }}
     </section>
 
@@ -308,5 +308,29 @@
     </div>
   </dialog>
   {% endif %}
+  {% if ai_enabled %}
+  <dialog class="modal modal-ai" id="ai-dialog" aria-labelledby="ai-dialog-title" data-ai-url="{{ url_for('web.ai_assist') }}" data-report-id="{{ report.id }}">
+    <div class="modal-pdf-head">
+      <h2 id="ai-dialog-title"><span data-ai-title>Suggestion</span></h2>
+      <button class="btn btn-icon btn-sm" type="button" data-ai-close aria-label="Discard and close">{{ icon('x') }}</button>
+    </div>
+    <div class="modal-ai-body">
+      <div class="ai-status" data-ai-status role="status" aria-live="polite">
+        {{ icon('spinner') }}<span data-ai-message>Asking the local model…</span>
+      </div>
+      <div class="stack" data-ai-suggestion hidden>
+        <p class="hint">Suggestion from your local model. Check it before using it: you can edit it here first. It is plain text and is only added to the form when you click a button below.</p>
+        <label class="visually-hidden" for="ai-text">Suggested text</label>
+        <textarea class="textarea" id="ai-text" rows="14" maxlength="50000" data-ai-text></textarea>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" type="button" data-ai-discard>Discard</button>
+      <button class="btn" type="button" data-ai-copy hidden>{{ icon('copy') }}<span>Copy</span></button>
+      <button class="btn" type="button" data-ai-insert hidden title="Add the suggestion at the cursor position (or at the end) of the field">{{ icon('plus') }}Insert</button>
+      <button class="btn btn-primary" type="button" data-ai-replace hidden>{{ icon('check') }}Replace field</button>
+    </div>
+  </dialog>
+  {% endif %}
 {% endblock %}
-{% block scripts %}<script src="{{ url_for('static', filename='cvss.js') }}"></script><script src="{{ url_for('static', filename='targets.js') }}"></script>{% if finding and attachments %}<script src="{{ url_for('static', filename='screenshot-editor.js') }}"></script>{% endif %}{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='cvss.js') }}"></script><script src="{{ url_for('static', filename='targets.js') }}"></script>{% if finding and attachments %}<script src="{{ url_for('static', filename='screenshot-editor.js') }}"></script>{% endif %}{% if ai_enabled %}<script src="{{ url_for('static', filename='ai.js') }}"></script>{% endif %}{% endblock %}

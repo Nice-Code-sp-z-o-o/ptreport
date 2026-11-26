@@ -5,13 +5,15 @@ from __future__ import annotations
 import base64
 import binascii
 import hashlib
+import io
 import json
 import re
 import sqlite3
+import zipfile
 from datetime import datetime, timezone
 from typing import Any
 
-from flask import url_for
+from flask import current_app, render_template, url_for
 
 from ptreport import __version__, repo
 from ptreport.cwe import cwe_name, cwe_url
@@ -157,6 +159,52 @@ def build_context(conn: sqlite3.Connection, report_id: int, inline_images: bool 
         ctx["fingerprint"] = hashlib.sha256(
             json.dumps(content, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
     return ctx
+
+
+DOWNLOAD_FORMATS = {"html": ("text/html", "html"), "md": ("text/markdown", "md"),
+                    "json": ("application/json", "json"), "pdf": ("application/pdf", "pdf"),
+                    "tex": ("application/zip", "zip")}
+
+
+def render_download(conn: sqlite3.Connection, report_id: int, fmt: str) -> tuple[bytes, str, str] | None:
+    """The file behind the web "Export" buttons and ``ptreport export``: (body, mimetype, file name).
+
+    Returns None when the report does not exist. Needs an app context (templates, LaTeX template from the DB);
+    PDF/TeX may raise :class:`ptreport.latex.LatexError`."""
+    from ptreport import latex
+
+    ctx = build_context(conn, report_id, inline_images=True)
+    if ctx is None:
+        return None
+    mimetype, ext = DOWNLOAD_FORMATS[fmt]
+    if fmt == "html":
+        css = current_app.open_resource("static/report.css").read().decode("utf-8")
+        body: bytes = render_template("export/report.html", inline_css=css, preview=False, **ctx).encode("utf-8")
+    elif fmt == "md":
+        body = to_markdown(ctx).encode("utf-8")
+    elif fmt == "json":
+        add_originals(conn, ctx)  # backups keep the untouched originals of edited screenshots
+        doc = to_json(ctx)
+        # working notes travel with the backup, but are not report content (not in the fingerprint)
+        doc["notes"] = [{f: n[f] for f in repo.NOTE_FIELDS} for n in reversed(repo.list_notes(conn, report_id))]
+        body = json.dumps(doc, ensure_ascii=False, indent=2).encode("utf-8")
+    else:
+        source, files = latex.render(ctx, repo.get_latex_template(conn))
+        if fmt == "pdf":
+            body = latex.compile_pdf(source, files, volatile=ctx["generated_at"])
+        else:
+            body = tex_zip(source, files)
+    return body, mimetype, safe_filename(ctx["report"]["title"], ext)
+
+
+def tex_zip(source: str, files: dict[str, bytes]) -> bytes:
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("report.tex", source)
+        for name, data in files.items():
+            archive.writestr(name, data)
+        archive.writestr("README.txt", "Compile with: tectonic report.tex  (or: xelatex report.tex, twice)\n")
+    return buffer.getvalue()
 
 
 def safe_filename(title: str, ext: str) -> str:

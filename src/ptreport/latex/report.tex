@@ -140,7 +140,8 @@
   \node[anchor=north west, inner sep=0pt] at ([xshift=20mm,yshift=-18mm]current page.north west)
     {\ifx\ptLogoFile\empty{\color{white}\Large\bfseries \VAR{report.vendor_name}}\else{\setlength{\fboxsep}{3mm}\colorbox{white}{\includegraphics[height=12mm]{\ptLogoFile}}}\fi};
   \node[anchor=south west, text width=170mm, align=left, inner sep=0pt] at ([xshift=20mm,yshift=-106mm]current page.north west)
-    {{\color{white!78!brand}\small\bfseries\MakeUppercase{\VAR{L.report}}}\\[5mm]
+    {\hyphenpenalty=10000\exhyphenpenalty=10000\rightskip=0pt plus 1fil% title: whole words, ragged right
+     {\color{white!78!brand}\small\bfseries\MakeUppercase{\VAR{L.report}}}\\[5mm]
      {\color{white}\fontsize{26}{31}\selectfont\bfseries\spaceskip=0.34em plus 0.12em minus 0.06em\relax\VAR{report.title}}\BLOCK{if report.client_name}\\[6mm]
      {\color{white!85!brand}\large \VAR{report.client_name}}\BLOCK{endif}};
 \end{tikzpicture}

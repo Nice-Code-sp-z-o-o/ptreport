@@ -2,7 +2,7 @@
 
 # ptreport – Penetration Test Report generator
 
-### Free, open-source penetration test report generator
+### Free and open source · runs locally · Apache 2.0
 
 Write findings, collect evidence and export professional PDF reports – on your own machine.<br>
 No cloud, no accounts, no licence fees.

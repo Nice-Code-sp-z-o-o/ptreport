@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% from "_macros.html" import input, textarea, post_button, icon, crumbs, flash %}
+{% block title %}Notes · {{ report.title }}{% endblock %}
+{% block content %}
+<div class="stack-lg">
+  {{ crumbs([('Reports', url_for('web.index'), False), (report.title, url_for('web.report_detail', report_id=report.id), False), ('Notes', None, True)]) }}
+  <div class="page-head">
+    <div class="stack">
+      <h1>Notes</h1>
+      <p class="muted">Working notes for {{ report.title }}: raw results, ideas, credentials in scope, to-dos. They never appear in the report; JSON backups keep them.</p>
+    </div>
+    <div class="cluster">
+      <a class="btn btn-primary" href="{{ url_for('web.notes', report_id=report.id, note='new') }}">{{ icon('plus') }}New note</a>
+    </div>
+  </div>
+  {% if errors %}{{ flash('error', 'Please fix the highlighted fields.') }}{% endif %}
+
+  <div class="notes-layout">
+    <aside class="panel stack notes-side" aria-labelledby="notes-list-h">
+      <div class="section-head">
+        <h2 id="notes-list-h">All notes <span class="muted">({{ total }})</span></h2>
+      </div>
+      {% if total %}
+        <form method="get" action="{{ url_for('web.notes', report_id=report.id) }}" role="search" class="note-search">
+          <label class="visually-hidden" for="f-nq">Search notes</label>
+          <input class="input" id="f-nq" name="q" value="{{ query }}" placeholder="Search notes" maxlength="100">
+          <button class="btn btn-icon" type="submit" aria-label="Search">{{ icon('search') }}</button>
+        </form>
+      {% endif %}
+      {% if notes %}
+        <ul class="note-list">
+          {% for n in notes %}
+            <li>
+              <a class="note-item{% if current and current.id == n.id %} is-current{% endif %}" href="{{ url_for('web.notes', report_id=report.id, note=n.id, q=query or None) }}"{% if current and current.id == n.id %} aria-current="page"{% endif %}>
+                <span class="note-item-title">{% if n.pinned %}{{ icon('pin') }}<span class="visually-hidden">Pinned: </span>{% endif %}{{ n.title }}</span>
+                <span class="note-item-meta mono">{{ n.updated_at[:16] }}</span>
+                {% if n.excerpt %}<span class="note-item-excerpt">{{ n.excerpt }}</span>{% endif %}
+              </a>
+            </li>
+          {% endfor %}
+        </ul>
+      {% elif query %}
+        <p class="muted">No notes match "{{ query }}".</p>
+      {% else %}
+        <p class="muted">No notes yet.</p>
+      {% endif %}
+    </aside>
+
+    <section class="panel stack-lg notes-main" aria-labelledby="note-h">
+      <div class="section-head">
+        <h2 id="note-h">{{ current.title if current else 'New note' }}</h2>
+        {% if current %}
+          <div class="cluster">
+            <span class="muted small">Created <span class="mono">{{ current.created_at[:16] }}</span> · updated <span class="mono">{{ current.updated_at[:16] }}</span></span>
+            {{ post_button(url_for('web.note_delete', note_id=current.id), 'Delete', 'btn btn-sm btn-danger', 'Delete the note "' ~ current.title ~ '"?', icon_name='trash') }}
+          </div>
+        {% endif %}
+      </div>
+      <form method="post" class="stack-lg" novalidate data-validate
+            action="{{ url_for('web.note_edit', note_id=current.id) if current else url_for('web.note_new', report_id=report.id) }}">
+        <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+        {{ input('title', 'Title', values, errors, required=True, maxlength=300, placeholder='Nmap of the DMZ, open questions for the client ...') }}
+        {{ textarea('body', 'Note', values, errors, rows=18, mono=True, hint='Same mark-up as in findings: ## headings, - lists, **bold**, `code`, ``` code blocks and | tables |.') }}
+        <label class="check check-inline"><input type="checkbox" name="pinned" value="1"{% if values.get('pinned') in (1, '1', True) %} checked{% endif %}><span class="check-text">Pin to the top of the list</span></label>
+        <div class="cluster">
+          <button class="btn btn-primary" type="submit">{{ 'Save note' if current else 'Create note' }}</button>
+          {% if current %}<a class="btn btn-ghost" href="{{ url_for('web.notes', report_id=report.id, note=current.id) }}">Discard changes</a>{% endif %}
+        </div>
+      </form>
+      {% if current and current.body %}
+        <div class="stack">
+          <h3 class="muted small">Preview</h3>
+          <div class="note-view">{{ current.body|richtext }}</div>
+        </div>
+      {% endif %}
+    </section>
+  </div>
+</div>
+{% endblock %}

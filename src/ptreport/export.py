@@ -30,6 +30,7 @@ from ptreport.validation import (
     validate_attachment,
     validate_cwe_note,
     validate_history_entry,
+    validate_note,
     validate_report_version,
     validate_section,
     validate_evidence,
@@ -529,6 +530,19 @@ def import_json(conn: sqlite3.Connection, payload: Any) -> int:
         note_clean["position"] = position if isinstance(position, int) and 0 <= position <= 10_000 else 0
         cwe_notes.append(note_clean)
 
+    work_notes = []
+    work_in = payload.get("notes") or []
+    if not isinstance(work_in, list) or len(work_in) > MAX_IMPORT_ITEMS:
+        problems.append("'notes' must be a list")
+        work_in = []
+    for i, note in enumerate(work_in, 1):
+        if not isinstance(note, dict):
+            problems.append(f"note #{i}: must be an object")
+            continue
+        note_clean, note_errs = validate_note(note)
+        _collect(f"note #{i}", note_errs, problems)
+        work_notes.append(note_clean)
+
     if problems:
         raise ImportError_(problems[:50])
 
@@ -555,4 +569,6 @@ def import_json(conn: sqlite3.Connection, payload: Any) -> int:
             repo.replace_sections(conn, report_id, sections)
         for note in cwe_notes:
             repo.save_cwe_note(conn, report_id, note["cwe"], note, position=note["position"])
+        for note in work_notes:
+            repo.create_note(conn, report_id, note)
     return report_id

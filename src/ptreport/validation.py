@@ -442,3 +442,14 @@ def validate_template(data: Mapping[str, Any]) -> tuple[dict, dict]:
     out.update(v.clean)
     errors.update(v.errors)
     return out, errors
+
+
+def validate_note(data: Mapping[str, Any]) -> tuple[dict, dict]:
+    """A working note of a report: title, free text (same mark-up as other text fields), pinned flag."""
+    v = Validator(data)
+    v.text("title", required=True, max_len=SHORT, label="Title")
+    v.text("body", max_len=LONG, multiline=True, strip=False, label="Note")
+    v.clean["body"] = v.clean.get("body", "").rstrip()
+    pinned = data.get("pinned")
+    v.clean["pinned"] = 1 if pinned in (True, 1, "1", "on", "true") else 0
+    return v.clean, v.errors

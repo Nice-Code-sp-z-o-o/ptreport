@@ -840,6 +840,8 @@ def clone_report(conn: sqlite3.Connection, report_id: int, retest: bool) -> int:
         for cwe, note in list_cwe_notes(conn, report_id).items():
             save_cwe_note(conn, new_id, cwe, note, position=note["position"])
         conn.execute("UPDATE reports SET group_by_cwe = ? WHERE id = ?", (report["group_by_cwe"], new_id))
+        for note in reversed(list_notes(conn, report_id)):
+            create_note(conn, new_id, note)
     return new_id
 
 
@@ -935,3 +937,42 @@ def apply_scan_import(conn: sqlite3.Connection, staged: dict, target_keys: set[s
             })
         delete_scan_import(conn, staged["id"])
     return created, reused, len(findings)
+
+
+# ------------------------------------------------------------------- notes --
+
+NOTE_FIELDS = ("title", "body", "pinned")
+
+
+def list_notes(conn: sqlite3.Connection, report_id: int, query: str = "") -> list[dict]:
+    sql = "SELECT * FROM report_notes WHERE report_id = ?"
+    params: list = [report_id]
+    if query:
+        like = "%" + query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+        sql += " AND (title LIKE ? ESCAPE '\\' OR body LIKE ? ESCAPE '\\')"
+        params += [like, like]
+    sql += " ORDER BY pinned DESC, updated_at DESC, id DESC"
+    return [dict(r) for r in conn.execute(sql, params)]
+
+
+def count_notes(conn: sqlite3.Connection, report_id: int) -> int:
+    return conn.execute("SELECT COUNT(*) FROM report_notes WHERE report_id = ?", (report_id,)).fetchone()[0]
+
+
+def get_note(conn: sqlite3.Connection, note_id: int) -> dict | None:
+    return _row(conn.execute("SELECT * FROM report_notes WHERE id = ?", (note_id,)).fetchone())
+
+
+def create_note(conn: sqlite3.Connection, report_id: int, data: dict) -> int:
+    cur = conn.execute("INSERT INTO report_notes (report_id, title, body, pinned) VALUES (?, ?, ?, ?)",
+                       [report_id] + [data.get(f, "" if f != "pinned" else 0) for f in NOTE_FIELDS])
+    return int(cur.lastrowid)
+
+
+def update_note(conn: sqlite3.Connection, note: dict, data: dict) -> None:
+    conn.execute("UPDATE report_notes SET title = ?, body = ?, pinned = ?, updated_at = datetime('now') WHERE id = ?",
+                 [data.get(f, "" if f != "pinned" else 0) for f in NOTE_FIELDS] + [note["id"]])
+
+
+def delete_note(conn: sqlite3.Connection, note: dict) -> None:
+    conn.execute("DELETE FROM report_notes WHERE id = ?", (note["id"],))

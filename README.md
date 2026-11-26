@@ -1,7 +1,16 @@
 # ptreport
 
+[![CI](https://github.com/Nice-Code-sp-z-o-o/ptreport/actions/workflows/ci.yml/badge.svg)](https://github.com/Nice-Code-sp-z-o-o/ptreport/actions/workflows/ci.yml)
+[![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+
 A pentest report generator that runs on your own machine. Everything stays local:
 one SQLite file, no accounts, no cloud.
+
+![ptreport: CVSS calculator and screenshot editor](docs/media/ptreport-demo.gif)
+
+[![Watch the 2-minute demo video](docs/media/demo-poster.png)](docs/media/ptreport-demo.mp4)
+
+*All data in the screenshots and the video is made up (fictional "Acme" client, `.example` domains).*
 
 - **Reports**: client, assessors, testing period, executive summary, scope, methodology
 - **Targets**: web apps, APIs, hosts, network ranges, mobile apps…
@@ -42,6 +51,23 @@ one SQLite file, no accounts, no cloud.
 - **Command line**: list, create and show reports, import scanner files and JSON backups, export to
   PDF/HTML/Markdown/JSON from a shell or script (`ptreport report list`, `ptreport export 3 --format pdf`)
 
+## Screenshots
+
+| | |
+|---|---|
+| ![Report overview with findings, CVSS, CWE, targets and statuses](docs/screenshots/report.png) | ![CVSS 3.1 calculator on a finding](docs/screenshots/cvss-calculator.png) |
+| **Report overview**: severity bar, findings with CVSS, CWE, targets and status | **CVSS calculator**: 4.0 / 3.1 / 3.0 / 2.0, the vector and score update as you click |
+| ![HTTP evidence on a finding](docs/screenshots/http-evidence.png) | ![Screenshot editor with box, arrow and pixelated area](docs/screenshots/screenshot-editor.png) |
+| **HTTP evidence**: raw requests and responses (from Burp or pasted) | **Screenshot editor**: arrows, boxes, irreversible pixelation, crop |
+| ![PDF preview in the browser](docs/screenshots/pdf-preview.png) | ![Template library](docs/screenshots/templates.png) |
+| **PDF preview** of the LaTeX report | **Finding templates** in English and Polish |
+| ![Scanner import review](docs/screenshots/scan-import.png) | ![Working notes](docs/screenshots/notes.png) |
+| **Scanner import** (Burp, Nessus, Nmap, ZAP, OpenVAS) with a review step | **Working notes** per report |
+
+The generated PDF (cover, summary of findings, a finding with evidence and a screenshot):
+
+![Pages of a generated PDF report](docs/screenshots/pdf-pages.png)
+
 ## Install (one command)
 
 ```bash
@@ -77,7 +103,7 @@ This opens <http://127.0.0.1:5055/> in your browser. Options:
 
 - **Finding IDs**: the format is set in **Settings → Finding IDs** as a template: `{prefix}` (the report's
   prefix), `{n}` or `{n:4}` (the number, zero padded), `{year}` (year of testing), e.g. `{prefix}-{n:4}` gives
-  `LT-0002`. You can also set the first number and the default prefix for new reports. A report can override the
+  `SEC-0002`. You can also set the first number and the default prefix for new reports. A report can override the
   format in its details, and a single finding can have its own ID (e.g. when copying an existing report).
 - **Numbering**: a new finding gets the next number. Reorder with ↑/↓, or click
   **Renumber by severity** (Critical first, then by CVSS score). Deleting a finding closes the gap.
@@ -230,6 +256,14 @@ choose **Send to ptreport**. A dialog asks for:
   existing finding**,
 - the evidence title and whether to include the response.
 
+![Sending a request from Burp to ptreport](docs/media/burp-send-to-ptreport.gif)
+
+| | |
+|---|---|
+| ![Send to ptreport in Burp's context menu](docs/screenshots/burp-context-menu.png) | ![Send to ptreport dialog](docs/screenshots/burp-send-dialog.png) |
+
+![Confirmation after sending](docs/screenshots/burp-sent.png)
+
 Selecting several requests adds each one as a separate HTTP evidence item. A target matching the request's host is
 preselected, or created from it. Afterwards you can open the finding in ptreport.
 
@@ -324,7 +358,8 @@ src/ptreport/
   repo.py           all SQL (parameterised)
   validation.py     server-side validation for forms / API / import
   cvss_service.py   CVSS scoring + calculator metric definitions
-  cwe.py            curated CWE list for autocomplete
+  cwe.py            MITRE CWE catalogue (search, names, mitigations)
+  ai.py             optional local AI assistant (Ollama, loopback only)
   security.py       Host allow-list, CSRF, API token, security headers
   views.py          browser UI
   api.py            JSON API v1
@@ -336,3 +371,19 @@ src/ptreport/
   templates/ static/
 tests/              pytest suite
 ```
+
+## Contributing
+
+Issues and pull requests are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md) and the
+[code of conduct](CODE_OF_CONDUCT.md). Changes are listed in [CHANGELOG.md](CHANGELOG.md).
+
+**Security issues:** please report them privately as described in [SECURITY.md](SECURITY.md).
+
+## License
+
+ptreport is released under the [Apache License 2.0](LICENSE) (see also [NOTICE](NOTICE)). It ships the MITRE CWE List (CWE Terms of Use) and
+the Hanken Grotesk and JetBrains Mono fonts (SIL Open Font License 1.1); details and the licenses of
+dependencies are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+Burp Suite is a trademark of PortSwigger Ltd. and CWE is a trademark of The MITRE Corporation; ptreport is not
+affiliated with or endorsed by them.

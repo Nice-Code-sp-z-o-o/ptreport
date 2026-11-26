@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=69"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -8,11 +8,34 @@ version = "0.1.0"
 description = "Local-first penetration test report generator (SQLite, single command)."
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "MIT" }
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE", "THIRD_PARTY_NOTICES.md", "src/ptreport/data/CWE-LICENSE.txt", "src/ptreport/static/fonts/OFL.txt"]
+authors = [{ name = "Nice-Code sp. z o.o." }]
+keywords = ["pentest", "penetration-testing", "report", "security", "cvss", "cwe", "burp", "latex"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Web Environment",
+    "Framework :: Flask",
+    "Intended Audience :: Information Technology",
+    "Natural Language :: English",
+    "Natural Language :: Polish",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Security",
+    "Topic :: Office/Business",
+]
 dependencies = [
     "flask>=3.1.3,<4",
     "cvss>=3.6,<4",
 ]
+
+[project.urls]
+Homepage = "https://github.com/Nice-Code-sp-z-o-o/ptreport"
+Issues = "https://github.com/Nice-Code-sp-z-o-o/ptreport/issues"
+Changelog = "https://github.com/Nice-Code-sp-z-o-o/ptreport/blob/main/CHANGELOG.md"
+Security = "https://github.com/Nice-Code-sp-z-o-o/ptreport/security/policy"
 
 [project.optional-dependencies]
 dev = ["pytest>=9"]

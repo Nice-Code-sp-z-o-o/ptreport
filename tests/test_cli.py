@@ -121,7 +121,7 @@ def test_report_create_and_list(run, report_id):
 
 
 def test_report_create_uses_settings_defaults_and_options(run):
-    code, out, err = run("report", "create", "--title", "Raport", "--language", "pl", "--prefix", "lt",
+    code, out, err = run("report", "create", "--title", "Raport", "--language", "pl", "--prefix", "sec",
                          "--report-version", "1.1", "--classification", "POUFNE")
     assert code == 0, err
     code, out, _ = run("report", "show", out.strip(), "--json")

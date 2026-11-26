@@ -22,13 +22,13 @@ def test_old_severity_manual_flag_is_ignored():
     assert errors == {} and "severity_manual" not in clean
 
 
-@pytest.mark.parametrize("value", ["LT-0002", "WEB.1", "A", "x:y_z-9"])
+@pytest.mark.parametrize("value", ["SEC-0002", "WEB.1", "A", "x:y_z-9"])
 def test_valid_external_ids(value):
     clean, errors = validate_finding({"title": "x", "severity": "low", "external_id": value})
     assert errors == {} and clean["external_id"] == value
 
 
-@pytest.mark.parametrize("value", ["-LT", "LT 01", "<b>", "A" * 33, "LT/1"])
+@pytest.mark.parametrize("value", ["-SEC", "SEC 01", "<b>", "A" * 33, "SEC/1"])
 def test_invalid_external_ids(value):
     assert "external_id" in validate_finding({"title": "x", "severity": "low", "external_id": value})[1]
 
@@ -42,35 +42,35 @@ def test_rating_for_score(score, version, rating):
 
 
 def test_display_id_and_uniqueness_in_ui(client, csrf, make_report, make_finding):
-    report_id = make_report(finding_prefix="LT")
-    fid = make_finding(report_id, external_id="LT-0002", cvss_version="3.1", cvss_vector=VECTOR_46,
+    report_id = make_report(finding_prefix="SEC")
+    fid = make_finding(report_id, external_id="SEC-0002", cvss_version="3.1", cvss_vector=VECTOR_46,
                        severity="low")
     auto = make_finding(report_id, title="Second")
     page = client.get(f"/reports/{report_id}").get_data(as_text=True)
-    assert "LT-0002" in page and "LT-002" in page
+    assert "SEC-0002" in page and "SEC-002" in page
 
     resp = client.post(f"/findings/{auto}/edit", data={"_csrf": csrf, "title": "Second", "severity": "low",
-                                                       "external_id": "lt-0002"})
+                                                       "external_id": "sec-0002"})
     assert resp.status_code == 422
     assert "already uses this ID" in resp.get_data(as_text=True)
     # saving a finding with its own ID is fine
-    resp = client.post(f"/findings/{fid}/edit", data={"_csrf": csrf, "title": "Renamed", "external_id": "LT-0002",
+    resp = client.post(f"/findings/{fid}/edit", data={"_csrf": csrf, "title": "Renamed", "external_id": "SEC-0002",
                                                       "cvss_version": "3.1", "cvss_vector": VECTOR_46,
                                                       "severity": "low"})
     assert resp.status_code == 302
 
     html = client.get(f"/reports/{report_id}/export/html").get_data(as_text=True)
-    assert "LT-0002" in html
+    assert "SEC-0002" in html
     # severity stays Low (the tester's call), the CVSS chip shows 4.6 in the Medium colour
     assert 'cvss-chip cv-medium' in html and '>4.6</span><span class="cvss-chip-rating">Medium<' in html
     assert 'sev sev-low' in html
     md = client.get(f"/reports/{report_id}/export/md").get_data(as_text=True)
-    assert "### LT-0002: Renamed" in md
+    assert "### SEC-0002: Renamed" in md
 
 
 def test_api_rejects_duplicate_external_id(client, api_headers, make_report):
     report_id = make_report()
-    body = {"title": "x", "severity": "low", "external_id": "LT-0001"}
+    body = {"title": "x", "severity": "low", "external_id": "SEC-0001"}
     assert client.post(f"/api/v1/reports/{report_id}/findings", headers=api_headers, json=body).status_code == 201
     resp = client.post(f"/api/v1/reports/{report_id}/findings", headers=api_headers, json=body)
     assert resp.status_code == 422 and "external_id" in resp.get_json()["errors"]
@@ -79,7 +79,7 @@ def test_api_rejects_duplicate_external_id(client, api_headers, make_report):
 def test_import_roundtrip_keeps_ids_and_severity(client, csrf, make_report, make_finding):
     from io import BytesIO
     report_id = make_report()
-    make_finding(report_id, external_id="LT-0011", cvss_version="3.1", cvss_vector=VECTOR_46, severity="low")
+    make_finding(report_id, external_id="SEC-0011", cvss_version="3.1", cvss_vector=VECTOR_46, severity="low")
     exported = client.get(f"/reports/{report_id}/export/json").get_data()
     resp = client.post("/import", data={"_csrf": csrf, "file": (BytesIO(exported), "r.json")},
                        content_type="multipart/form-data")
@@ -88,7 +88,7 @@ def test_import_roundtrip_keeps_ids_and_severity(client, csrf, make_report, make
     conn = connect(client.application.config["DATABASE"])
     f = repo.list_findings(conn, new_id)[0]
     conn.close()
-    assert (f["external_id"], f["severity"], f["cvss_score"]) == ("LT-0011", "low", 4.6)
+    assert (f["external_id"], f["severity"], f["cvss_score"]) == ("SEC-0011", "low", 4.6)
 
 
 def test_migration_upgrades_version_1_database(tmp_path):

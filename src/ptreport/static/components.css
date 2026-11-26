@@ -311,6 +311,12 @@ legend { padding: 0; }
 .status-risk_accepted { --st: var(--c-st-accepted); }
 .status-false_positive { --st: var(--c-st-false); }
 .status-false_positive span { text-decoration: line-through; text-decoration-thickness: 1px; }
+.status-partially_fixed { --st: var(--c-st-partial); }
+.status-not_fixed { --st: var(--c-st-notfixed); }
+.status-wont_fix { --st: var(--c-st-accepted); }
+.status-not_a_bug { --st: var(--c-st-false); }
+.status-not_a_bug span { text-decoration: line-through; text-decoration-thickness: 1px; }
+.status-cannot_verify { --st: var(--c-st-false); }
 
 /* Chip */
 .chip { display: inline-flex; align-items: center; gap: var(--sp-2); min-height: 24px; max-width: 100%; padding: 0 var(--sp-2); font-size: var(--fs-sm); color: var(--c-text); background: var(--c-raised); border: 1px solid var(--c-line); border-radius: var(--radius); white-space: nowrap; }

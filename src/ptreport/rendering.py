@@ -231,8 +231,13 @@ SEVERITY_LABELS = {
     "pl": {"critical": "Krytyczna", "high": "Wysoka", "medium": "Średnia", "low": "Niska", "info": "Informacyjna"},
 }
 STATUS_LABELS = {
-    "en": {"open": "Open", "fixed": "Fixed", "risk_accepted": "Risk accepted", "false_positive": "False positive"},
-    "pl": {"open": "Otwarta", "fixed": "Naprawiona", "risk_accepted": "Ryzyko zaakceptowane", "false_positive": "Fałszywie pozytywna"},
+    "en": {"open": "Open", "partially_fixed": "Partially fixed", "not_fixed": "Not fixed", "fixed": "Fixed",
+           "risk_accepted": "Risk accepted", "wont_fix": "Won't fix", "false_positive": "False positive",
+           "not_a_bug": "Not a bug", "cannot_verify": "Cannot verify"},
+    "pl": {"open": "Otwarta", "partially_fixed": "Częściowo naprawiona", "not_fixed": "Nienaprawiona",
+           "fixed": "Naprawiona", "risk_accepted": "Ryzyko zaakceptowane", "wont_fix": "Nie zostanie naprawiona",
+           "false_positive": "Fałszywie pozytywna", "not_a_bug": "Nie jest błędem",
+           "cannot_verify": "Nie można zweryfikować"},
 }
 TARGET_KIND_LABELS = {
     "en": {"web": "Web application", "api": "API", "host": "Host", "network": "Network range",

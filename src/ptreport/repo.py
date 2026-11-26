@@ -15,7 +15,7 @@ from typing import Any
 
 from ptreport import ai, ids
 from ptreport.db import transaction
-from ptreport.validation import DEFAULT_BRAND_COLOR, SEVERITY_RANK
+from ptreport.validation import DEFAULT_BRAND_COLOR, OPEN_STATUSES, SEVERITY_RANK
 
 REPORT_FIELDS = (
     "title", "client_name", "assessor", "start_date", "end_date", "language",
@@ -62,9 +62,10 @@ def list_reports(conn: sqlite3.Connection) -> list[dict]:
 def finding_counts_by_report(conn: sqlite3.Connection) -> dict[int, dict]:
     """Per report: findings by severity plus how many are still open (one query for all reports)."""
     out: dict[int, dict] = {}
+    marks = _placeholders(len(OPEN_STATUSES))
     for row in conn.execute(
-        "SELECT report_id, severity, status = 'open' AS is_open, COUNT(*) AS n FROM findings "
-        "GROUP BY report_id, severity, is_open"
+        f"SELECT report_id, severity, status IN ({marks}) AS is_open, COUNT(*) AS n FROM findings "
+        "GROUP BY report_id, severity, is_open", OPEN_STATUSES
     ):
         entry = out.setdefault(row["report_id"], {"severity": {s: 0 for s in SEVERITY_RANK}, "open": 0})
         entry["severity"][row["severity"]] = entry["severity"].get(row["severity"], 0) + row["n"]

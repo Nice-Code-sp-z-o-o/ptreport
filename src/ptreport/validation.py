@@ -20,7 +20,12 @@ from ptreport.cvss_service import CvssInvalid, score_vector
 
 SEVERITIES = ("critical", "high", "medium", "low", "info")
 SEVERITY_RANK = {s: i for i, s in enumerate(SEVERITIES)}
-FINDING_STATUSES = ("open", "fixed", "risk_accepted", "false_positive")
+FINDING_STATUSES = (
+    "open", "partially_fixed", "not_fixed", "fixed", "risk_accepted", "wont_fix", "false_positive", "not_a_bug",
+    "cannot_verify",
+)
+# Statuses that still need work: counted as "open" in report lists, summaries and the CLI.
+OPEN_STATUSES = ("open", "partially_fixed", "not_fixed")
 CONFIDENCE_LEVELS = ("certain", "probable", "unknown")
 RETEST_RESULTS = ("fixed", "partially_fixed", "not_fixed", "not_tested")
 TARGET_KINDS = ("web", "api", "host", "network", "mobile", "cloud", "wireless", "other")

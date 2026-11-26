@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "ptreport"
 version = "0.1.0"
-description = "Local-first penetration test report generator (SQLite, single command)."
+description = "Free, open-source penetration test report generator: findings, evidence, CVSS, CWE and LaTeX PDF reports, all local."
 readme = "README.md"
 requires-python = ">=3.10"
 license = "Apache-2.0"

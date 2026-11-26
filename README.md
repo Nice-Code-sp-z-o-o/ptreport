@@ -1,74 +1,115 @@
+<div align="center">
+
 # ptreport
 
-[![CI](https://github.com/Nice-Code-sp-z-o-o/ptreport/actions/workflows/ci.yml/badge.svg)](https://github.com/Nice-Code-sp-z-o-o/ptreport/actions/workflows/ci.yml)
-[![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+### Free, open-source penetration test report generator
 
-A pentest report generator that runs on your own machine. Everything stays local:
-one SQLite file, no accounts, no cloud.
+Write findings, collect evidence and export professional PDF reports – on your own machine.<br>
+No cloud, no accounts, no licence fees.
+
+[![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-3776AB.svg?logo=python&logoColor=white)](pyproject.toml)
+[![Platform: Linux | macOS](https://img.shields.io/badge/platform-Linux%20%7C%20macOS-555.svg)](#install)
+[![CI](https://github.com/Nice-Code-sp-z-o-o/ptreport/actions/workflows/ci.yml/badge.svg)](https://github.com/Nice-Code-sp-z-o-o/ptreport/actions/workflows/ci.yml)
+[![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+
+[Quick start](#quick-start) · [Features](#features) · [Screenshots](#screenshots) ·
+[Burp extension](#burp-suite-extension) · [Documentation](#documentation) · [Contributing](#contributing)
 
 ![ptreport: CVSS calculator and screenshot editor](docs/media/ptreport-demo.gif)
 
+</div>
+
+## Why ptreport?
+
+- **Free and open source.** Apache 2.0. No seats, no subscriptions, no "community edition" limits.
+- **Your data stays with you.** Client findings never leave your machine: one SQLite file, no telemetry, works
+  offline. Ideal when contracts or NDAs forbid cloud tools.
+- **A report your client can read.** A clean, professional PDF out of the box (LaTeX, English or Polish), with
+  your logo and colours – or your own LaTeX template.
+- **Built for the way pentesters work.** Send requests straight from **Burp Suite**, import **Nessus, Nmap, ZAP,
+  OpenVAS and Burp** scans, score with **CVSS 4.0 / 3.1**, pick a **CWE** from the full MITRE catalogue, reuse
+  write-ups from a template library, and run retests.
+- **One command to install, one command to run.** Python + a self-contained LaTeX engine; nothing else to set up.
+
+## See it in action
+
 [![Watch the 2-minute demo video](docs/media/demo-poster.png)](docs/media/ptreport-demo.mp4)
 
-*All data in the screenshots and the video is made up (fictional "Acme" client, `.example` domains).*
+A 2-minute walkthrough: findings, CVSS, evidence, the screenshot editor, PDF preview, templates, scanner import
+and sending a request from Burp. *All data shown is made up (fictional "Acme" client, `.example` domains).*
 
-- **Reports**: client, assessors, testing period, executive summary, scope, methodology
-- **Targets**: web apps, APIs, hosts, network ranges, mobile apps…
-- **Findings**: title, automatic numbering (`ACME-001`, `ACME-002`, …, with your own prefix),
-  clickable **CVSS 4.0 / 3.1 / 3.0 / 2.0** calculator, **CWE** (autocomplete), description,
-  impact, technical details, **PoC**, remediation, references, affected targets, status: *Open*,
-  *Partially fixed*, *Not fixed*, *Fixed*, *Risk accepted*, *Won't fix*, *False positive*, *Not a bug*,
-  *Cannot verify* (the first three count as open)
-- **HTTP evidence**: raw request/response pairs for each finding (the Burp extension will send these)
-- **Screenshots**: PNG/JPEG images per finding, numbered as figures across the report (type is checked
-  from the file's bytes; SVG is rejected). Exports embed them, so the HTML/PDF/Markdown stay self-contained
-- **Evidence files**: attach any file to a finding (.pcap, .har, .log, .json, .zip, scripts ...), several at once
-  or by drag and drop. The SHA-256 is computed on upload and printed in an "Attached files" table in the
-  HTML/Markdown/PDF report, so the client can verify every file; JSON exports carry the files and check the hash on import
-- **Screenshot editor**: crop, arrows, boxes and irreversible pixelation of secrets, right in the browser; the
-  untouched original is kept and can be restored at any time
-- **Confidence** per finding (certain / probable / unknown)
-- **Report metadata**: prepared by (company) and contact, report version, report date, version history table
-- **PDF from LaTeX**: the default PDF template is LaTeX (typeset by Tectonic, installed with ptreport);
-  you can upload your own template in Settings or download the LaTeX sources of a report
-- **Export**: PDF, standalone HTML, Markdown, LaTeX sources (.zip), JSON (backup or sharing), with report
-  headings in English or Polish
-- **Changelogs**: report version history (version, date, author, description, editable) and a history per
-  finding (status changes are recorded automatically, retest notes by hand); each can be hidden in exports
-- **Finding templates**: a library of reusable write-ups in English and Polish (12 common vulnerabilities
-  ship as a starter set); start a finding from a template, save any finding as a template, import/export JSON
-- **Scanner import**: Burp Suite XML, Nessus, Nmap, OWASP ZAP and OpenVAS/Greenbone reports become targets and
-  findings (with evidence); you review the list and tick what to add
-- **Retests**: create a retest report from an existing one, record the retest result, date and notes per finding,
-  and get a "Retest summary" section in the report
-- **Tables** in text fields (Markdown pipe tables), rendered in HTML and in the PDF
-- **Notes** per report: working notes (raw results, questions, to-dos) with search and pinning; never in the report
-- **Burp Suite extension**: right-click a request or response and send it to a new or existing finding, choosing
-  the title, CWE, severity and target in a dialog
-- **JSON API** with bearer-token auth (used by the Burp extension)
-- **AI writing assistant** (optional, off by default): draft, improve, translate PL↔EN or shorten finding texts with
-  a **local Ollama** model; only loopback addresses are accepted, so nothing leaves the machine
-- **Command line**: list, create and show reports, import scanner files and JSON backups, export to
-  PDF/HTML/Markdown/JSON from a shell or script (`ptreport report list`, `ptreport export 3 --format pdf`)
+## Quick start
+
+```bash
+git clone https://github.com/Nice-Code-sp-z-o-o/ptreport.git
+cd ptreport
+./install.sh      # virtualenv + pinned, hash-checked dependencies + LaTeX engine
+ptreport          # opens http://127.0.0.1:5055 in your browser
+```
+
+Create a report, add findings (or start from a template / import a scan), click **Preview PDF**. Details:
+[Install](#install), [Run](#run).
+
+## Features
+
+**Findings**
+- Automatic numbering with your own format (`ACME-001`, `2026/ACME/01` …)
+- Clickable **CVSS 4.0 / 3.1 / 3.0 / 2.0** calculator; **CWE** autocomplete over the full MITRE CWE 5.0 catalogue
+- Description, impact, technical details, PoC, remediation, references – Markdown-style text with tables
+- Nine statuses: *Open, Partially fixed, Not fixed, Fixed, Risk accepted, Won't fix, False positive, Not a bug,
+  Cannot verify*; confidence; per-finding history
+- **Template library** in English and Polish (12 common vulnerabilities to start with); save your own
+
+**Evidence**
+- Raw **HTTP request / response** pairs (pasted, imported or sent from Burp)
+- **Screenshots** with a built-in **editor**: crop, arrows, boxes and *irreversible* pixelation of secrets; the
+  original is kept
+- **Evidence files** of any type (.pcap, .har, logs, scripts …) with a server-side **SHA-256** printed in the
+  report, so the client can verify every file
+
+**Reports and export**
+- **PDF via LaTeX** (Tectonic, bundled by the installer), live preview in the browser, custom templates, branding
+- Standalone **HTML**, **Markdown**, LaTeX sources and a **JSON** backup / restore
+- Report structure editor, CWE grouping, wording overrides, version history, **English and Polish** report text
+- **Retest reports** with a retest summary; report duplication; private **working notes** per report
+
+**Integrations**
+- **Burp Suite extension**: right-click a request → *Send to ptreport* (new or existing finding, CWE, severity)
+- **Scanner import**: Burp, Nessus, Nmap, OWASP ZAP, OpenVAS / Greenbone – with a review step
+- **CLI** for scripts (`ptreport report list`, `ptreport import-scan`, `ptreport export 3 --format pdf`)
+- **JSON API** with a bearer token
+- Optional **AI writing assistant** using a *local* Ollama model (off by default, loopback only)
+
+**Security by design**: binds to 127.0.0.1, CSRF protection, strict CSP, hardened XML parsing (no XXE), uploads never
+rendered, LaTeX without shell escape. See [SECURITY.md](SECURITY.md).
 
 ## Screenshots
 
 | | |
 |---|---|
 | ![Report overview with findings, CVSS, CWE, targets and statuses](docs/screenshots/report.png) | ![CVSS 3.1 calculator on a finding](docs/screenshots/cvss-calculator.png) |
-| **Report overview**: severity bar, findings with CVSS, CWE, targets and status | **CVSS calculator**: 4.0 / 3.1 / 3.0 / 2.0, the vector and score update as you click |
+| **Report overview**: severity bar, findings with CVSS, CWE, targets and status | **CVSS calculator**: the vector and score update as you click |
 | ![HTTP evidence on a finding](docs/screenshots/http-evidence.png) | ![Screenshot editor with box, arrow and pixelated area](docs/screenshots/screenshot-editor.png) |
 | **HTTP evidence**: raw requests and responses (from Burp or pasted) | **Screenshot editor**: arrows, boxes, irreversible pixelation, crop |
 | ![PDF preview in the browser](docs/screenshots/pdf-preview.png) | ![Template library](docs/screenshots/templates.png) |
 | **PDF preview** of the LaTeX report | **Finding templates** in English and Polish |
-| ![Scanner import review](docs/screenshots/scan-import.png) | ![Working notes](docs/screenshots/notes.png) |
-| **Scanner import** (Burp, Nessus, Nmap, ZAP, OpenVAS) with a review step | **Working notes** per report |
+| ![Scanner import review](docs/screenshots/scan-import.png) | ![Send to ptreport dialog in Burp Suite](docs/screenshots/burp-send-dialog.png) |
+| **Scanner import** with a review step | **Burp Suite extension**: send a request to a new or existing finding |
 
-The generated PDF (cover, summary of findings, a finding with evidence and a screenshot):
+**The generated PDF** – cover, summary of findings, and a finding with evidence and a screenshot:
 
 ![Pages of a generated PDF report](docs/screenshots/pdf-pages.png)
 
-## Install (one command)
+## Documentation
+
+[Install](#install) · [Run](#run) · [Writing findings](#writing-findings) ·
+[Report structure, CWE groups, wording](#report-structure-cwe-groups-wording) · [PDF and LaTeX templates](#pdf-and-latex-templates) ·
+[AI writing assistant](#ai-writing-assistant-local-ollama) · [Command line](#command-line) ·
+[Burp Suite extension](#burp-suite-extension) · [API](#api-for-the-burp-extension) · [Security model](#security-model) ·
+[Development](#development)
+
+## Install
 
 ```bash
 ./install.sh
@@ -83,7 +124,7 @@ The script creates an isolated virtualenv in `~/.local/share/ptreport/venv`, ins
 
 Uninstall with `./install.sh --uninstall`. Your data is kept.
 
-## Run (one command)
+## Run
 
 ```bash
 ptreport

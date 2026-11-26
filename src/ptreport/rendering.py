@@ -8,11 +8,13 @@ payloads such as ``<script>`` in a PoC are always shown, never executed.
 from __future__ import annotations
 
 import re
+from typing import Any
 
 from markupsafe import Markup, escape
 
 from ptreport.cvss_service import rating_for_score, vector_strip
 from ptreport.cwe import cwe_name, cwe_url
+from ptreport.validation import file_kind
 
 _FENCE_OPEN = re.compile(r"^(`{3,})\s*([A-Za-z0-9_+.#-]*)\s*$")
 _INLINE_CODE = re.compile(r"`([^`\n]+)`")
@@ -263,6 +265,7 @@ REPORT_LABELS = {
         "no_cvss": "No CVSS", "retest_summary": "Retest summary", "retest": "Retest",
         "retest_result": "Retest result", "retest_date": "Retest date", "retest_notes": "Retest notes",
         "original_report": "Original report", "original_date": "original report dated",
+        "attached_files": "Attached files", "file_name": "File", "file_size": "Size", "sha256": "SHA-256",
     },
     "pl": {
         "report": "Raport z testów penetracyjnych", "client": "Klient", "assessor": "Testujący",
@@ -287,6 +290,7 @@ REPORT_LABELS = {
         "no_cvss": "Brak CVSS", "retest_summary": "Podsumowanie retestu", "retest": "Retest",
         "retest_result": "Wynik retestu", "retest_date": "Data retestu", "retest_notes": "Uwagi z retestu",
         "original_report": "Raport pierwotny", "original_date": "raport pierwotny z dnia",
+        "attached_files": "Załączone pliki", "file_name": "Plik", "file_size": "Rozmiar", "sha256": "SHA-256",
     },
 }
 
@@ -354,7 +358,24 @@ def cvss_rating_key(finding: dict) -> str:
     return rating_for_score(finding.get("cvss_score"), finding.get("cvss_version", ""))
 
 
+def human_size(size: Any) -> str:
+    """1536 -> '1.5 KB', 25 MiB -> '25 MB' (binary units, as file managers show them)."""
+    try:
+        value = float(size)
+    except (TypeError, ValueError):
+        return ""
+    if value < 1024:
+        return f"{int(value)} B"
+    for unit in ("KB", "MB", "GB"):
+        value /= 1024
+        if value < 1024 or unit == "GB":
+            return f"{value:.1f}".removesuffix(".0") + f" {unit}"
+    return ""
+
+
 def init_app(app) -> None:
+    app.jinja_env.filters["filesize"] = human_size
+    app.jinja_env.filters["file_kind"] = file_kind
     app.jinja_env.filters["cvss_rating_label"] = cvss_rating_label
     app.jinja_env.filters["cvss_rating_key"] = cvss_rating_key
     app.jinja_env.filters["cvss_rating_name"] = (

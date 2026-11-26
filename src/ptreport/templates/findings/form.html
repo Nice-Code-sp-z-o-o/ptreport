@@ -213,6 +213,54 @@
       </form>
     </section>
 
+    <section class="panel stack-lg" id="files" aria-labelledby="files-h">
+      <h2 id="files-h">Files <span class="muted">({{ files|length }})</span></h2>
+      <p class="hint">Evidence files of any type (logs, captures, HAR, scripts, archives). Up to {{ file_limits.size|filesize }} each and {{ file_limits.total|filesize }} per finding. The SHA-256 is computed on upload and listed in the report so the client can verify each file. Files are always downloaded, never opened in the browser.</p>
+      {% if files %}
+        <ul class="file-list">
+          {% for x in files %}
+            <li class="file-row">
+              <span class="file-icon">{{ icon('file-' ~ (x.filename|file_kind) if x.filename|file_kind != 'file' else 'file') }}</span>
+              <div class="file-main">
+                <a class="file-name" href="{{ url_for('web.file_download', file_id=x.id) }}" download>{{ x.filename }}</a>
+                <div class="file-meta">
+                  <span>{{ x.size|filesize }}</span>
+                  <span class="file-hash"><span class="visually-hidden">SHA-256 </span><code class="mono" title="SHA-256: {{ x.sha256 }}">{{ x.sha256[:12] }}…</code>
+                    <button class="btn btn-icon btn-sm btn-ghost" type="button" data-copy-text="{{ x.sha256 }}" aria-label="Copy SHA-256 of {{ x.filename }}" title="Copy SHA-256" hidden>{{ icon('copy') }}</button></span>
+                  <span class="mono">{{ x.uploaded_at }}</span>
+                </div>
+                <form method="post" action="{{ url_for('web.file_description', file_id=x.id) }}" class="shot-caption file-desc">
+                  <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+                  <label class="visually-hidden" for="fd-{{ x.id }}">Description of {{ x.filename }}</label>
+                  <input class="input" id="fd-{{ x.id }}" name="description" value="{{ x.description }}" maxlength="300" placeholder="Description">
+                  <button class="btn btn-sm" type="submit">Save</button>
+                </form>
+              </div>
+              <div class="file-actions">
+                <a class="btn btn-sm" href="{{ url_for('web.file_download', file_id=x.id) }}" download>{{ icon('download') }}Download</a>
+                {{ post_button(url_for('web.file_delete', file_id=x.id), 'Delete', 'btn btn-sm btn-danger', 'Delete the file ' ~ x.filename ~ '?', icon_name='trash') }}
+              </div>
+            </li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+      <form method="post" action="{{ url_for('web.file_new', finding_id=finding.id) }}" enctype="multipart/form-data" class="stack" novalidate data-validate data-file-drop>
+        <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+        <h3>Add files</h3>
+        <div class="grid-2">
+          <div class="field">
+            <label for="f-file-files">Files <span class="req" aria-hidden="true">*</span></label>
+            <input class="file-input" id="f-file-files" type="file" name="files" multiple required
+              {%- if file_errors.get('file') %} aria-invalid="true" aria-describedby="file-file-error"{% endif %}>
+            <p class="hint">Choose several at once, or drop them here.</p>
+            {{ field_error(file_errors, 'file', 'file-') }}
+          </div>
+          {{ input('description', 'Description', file_values, file_errors, maxlength=300, placeholder='Traffic capture of the login request', hint='Optional, applied to every file in this upload.', prefix='file-') }}
+        </div>
+        <div class="cluster"><button class="btn" type="submit">{{ icon('upload') }}Upload files</button></div>
+      </form>
+    </section>
+
     <section class="panel stack-lg" id="history" aria-labelledby="history-h">
       <h2 id="history-h">History <span class="muted">({{ history|length }})</span></h2>
       <p class="hint">Status changes are recorded automatically when you save the finding. Add retest notes and other events here.{% if not report.show_finding_history %} This report hides finding history in exports.{% endif %}</p>
@@ -333,4 +381,4 @@
   </dialog>
   {% endif %}
 {% endblock %}
-{% block scripts %}<script src="{{ url_for('static', filename='cvss.js') }}"></script><script src="{{ url_for('static', filename='targets.js') }}"></script>{% if finding and attachments %}<script src="{{ url_for('static', filename='screenshot-editor.js') }}"></script>{% endif %}{% if ai_enabled %}<script src="{{ url_for('static', filename='ai.js') }}"></script>{% endif %}{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='cvss.js') }}"></script><script src="{{ url_for('static', filename='targets.js') }}"></script>{% if finding and attachments %}<script src="{{ url_for('static', filename='screenshot-editor.js') }}"></script>{% endif %}<script src="{{ url_for('static', filename='files.js') }}"></script>{% if ai_enabled %}<script src="{{ url_for('static', filename='ai.js') }}"></script>{% endif %}{% endblock %}

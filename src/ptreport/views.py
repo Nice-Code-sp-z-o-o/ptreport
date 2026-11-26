@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import base64
 from datetime import date
 import json
 import re
+from urllib.parse import quote
 
 from flask import (
     Blueprint,
@@ -36,6 +38,9 @@ from ptreport.rendering import (
 )
 from ptreport.security import regenerate_api_token
 from ptreport.validation import (
+    FILE_MAX_BYTES,
+    FILE_MAX_PER_FINDING,
+    FILE_MAX_TOTAL_PER_FINDING,
     IMAGE_MAX_BYTES,
     IMAGE_MAX_PER_FINDING,
     CONFIDENCE_LEVELS,
@@ -45,9 +50,12 @@ from ptreport.validation import (
     SEVERITIES,
     TARGET_KINDS,
     TEMPLATE_FIELDS,
+    download_type,
     validate_edited_image,
     validate_evidence,
     validate_attachment,
+    validate_file,
+    validate_uploads,
     validate_ai_settings,
     validate_brand_color,
     validate_cwe_note,
@@ -224,6 +232,7 @@ def _finding_form(report: dict, finding: dict | None, values: dict, errors: dict
                   selected_targets: list[int], status: int = 200, *,
                   evidence_values: dict | None = None, evidence_errors: dict | None = None,
                   attachment_values: dict | None = None, attachment_errors: dict | None = None,
+                  file_values: dict | None = None, file_errors: dict | None = None,
                   history_values: dict | None = None, history_errors: dict | None = None):
     return (
         render_template(
@@ -245,6 +254,10 @@ def _finding_form(report: dict, finding: dict | None, values: dict, errors: dict
             attachments=finding["attachments"] if finding else [],
             attachment_values=attachment_values or {},
             attachment_errors=attachment_errors or {},
+            files=finding["files"] if finding else [],
+            file_values=file_values or {},
+            file_errors=file_errors or {},
+            file_limits={"size": FILE_MAX_BYTES, "total": FILE_MAX_TOTAL_PER_FINDING, "count": FILE_MAX_PER_FINDING},
             confidence_levels=CONFIDENCE_LEVELS,
             target_kinds=TARGET_KINDS,
             history=[{**h, "text": history_text(h)} for h in finding["history"]] if finding else [],
@@ -643,6 +656,69 @@ def report_version_delete(version_id: int):
     flash("Version removed from the history.", "success")
     return redirect(url_for("web.report_detail", report_id=version["report_id"], _anchor="versions"))
 
+
+# ----------------------------------------------------------- evidence files --
+
+@bp.post("/findings/<int:finding_id>/files")
+def file_new(finding_id: int):
+    finding, report = _finding_or_404(finding_id)
+    cleaned, errors = validate_uploads(request.files.getlist("files"), request.form.get("description", ""),
+                                   repo.file_usage(get_db(), finding_id))
+    if errors:
+        return _finding_form(report, finding, finding, {}, finding["target_ids"], 422,
+                             file_values=request.form, file_errors=errors)
+    with transaction(get_db()):
+        for clean in cleaned:
+            repo.create_file(get_db(), finding, clean)
+    flash(f"{len(cleaned)} file{'s' if len(cleaned) != 1 else ''} added.", "success")
+    return redirect(url_for("web.finding_edit", finding_id=finding_id, _anchor="files"))
+
+
+def _file_or_404(file_id: int, with_data: bool = False) -> dict:
+    file = repo.get_file(get_db(), file_id, with_data=with_data)
+    if file is None:
+        abort(404)
+    return file
+
+
+def content_disposition(filename: str) -> str:
+    """attachment; with an ASCII fallback name and the UTF-8 name (RFC 6266 / 5987)."""
+    fallback = re.sub(r"[^A-Za-z0-9._ ()+-]", "_", filename) or "file"
+    return f"attachment; filename=\"{fallback}\"; filename*=UTF-8''{quote(filename, safe='')}"
+
+
+@bp.get("/files/<int:file_id>")
+def file_download(file_id: int):
+    """Always a download, never rendered: active types (HTML, SVG, JS, XML, PDF ...) go out as octet-stream."""
+    file = _file_or_404(file_id, with_data=True)
+    response = Response(file["data"], mimetype=download_type(file["mime"]))
+    response.headers["Content-Disposition"] = content_disposition(file["filename"])
+    response.headers["Content-Security-Policy"] = "default-src 'none'; sandbox"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    # RFC 9530 integrity field, so a client can check the bytes against the hash shown in the report
+    response.headers["Repr-Digest"] = f"sha-256=:{base64.b64encode(bytes.fromhex(file['sha256'])).decode('ascii')}:"
+    response.headers["ETag"] = f'"{file["sha256"]}"'
+    return response
+
+
+@bp.post("/files/<int:file_id>/description")
+def file_description(file_id: int):
+    file = _file_or_404(file_id)
+    clean, errors = validate_file(file["filename"], request.form.get("description", ""), b"x")
+    if errors.get("description"):
+        flash(errors["description"], "error")
+    else:
+        repo.update_file_description(get_db(), file, clean["description"])
+        flash("Description saved.", "success")
+    return redirect(url_for("web.finding_edit", finding_id=file["finding_id"], _anchor="files"))
+
+
+@bp.post("/files/<int:file_id>/delete")
+def file_delete(file_id: int):
+    file = _file_or_404(file_id)
+    repo.delete_file(get_db(), file)
+    flash(f"File {file['filename']} deleted.", "success")
+    return redirect(url_for("web.finding_edit", finding_id=file["finding_id"], _anchor="files"))
 
 # ---------------------------------------------------------------- export --
 

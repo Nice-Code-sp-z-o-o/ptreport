@@ -237,15 +237,45 @@ MIGRATIONS: list[str] = [
     );
     CREATE INDEX idx_report_notes_report ON report_notes(report_id, pinned, updated_at);
     """,
-    # 12: reserved - this number is assigned to a feature developed on another branch; when that branch
-    # is merged its migration replaces this no-op placeholder (keep 13 below unchanged).
-    "",
+    # 12: evidence files of any type per finding (pcap, logs, HAR ...), with a server-side SHA-256
+    """
+    CREATE TABLE IF NOT EXISTS finding_files (
+        id          INTEGER PRIMARY KEY,
+        finding_id  INTEGER NOT NULL REFERENCES findings(id) ON DELETE CASCADE,
+        position    INTEGER NOT NULL,
+        filename    TEXT    NOT NULL,
+        description TEXT    NOT NULL DEFAULT '',
+        mime        TEXT    NOT NULL,
+        size        INTEGER NOT NULL,
+        sha256      TEXT    NOT NULL,
+        data        BLOB    NOT NULL,
+        uploaded_at TEXT    NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_finding_files_finding ON finding_files(finding_id, position);
+    """,
     # 13: screenshot editor - the untouched original of an edited screenshot (NULL = never edited)
     """
     ALTER TABLE attachments ADD COLUMN original_mime TEXT;
     ALTER TABLE attachments ADD COLUMN original_data BLOB;
     ALTER TABLE attachments ADD COLUMN original_sha256 TEXT;
     ALTER TABLE attachments ADD COLUMN edited_at TEXT;
+    """,
+    # 14: evidence files again, for databases that ran the screenshot-editor build first: there 12 was an empty
+    # placeholder, so they are at 13 without the table. A no-op where 12 already created it.
+    """
+    CREATE TABLE IF NOT EXISTS finding_files (
+        id          INTEGER PRIMARY KEY,
+        finding_id  INTEGER NOT NULL REFERENCES findings(id) ON DELETE CASCADE,
+        position    INTEGER NOT NULL,
+        filename    TEXT    NOT NULL,
+        description TEXT    NOT NULL DEFAULT '',
+        mime        TEXT    NOT NULL,
+        size        INTEGER NOT NULL,
+        sha256      TEXT    NOT NULL,
+        data        BLOB    NOT NULL,
+        uploaded_at TEXT    NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_finding_files_finding ON finding_files(finding_id, position);
     """,
 ]
 

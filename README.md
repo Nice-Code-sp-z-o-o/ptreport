@@ -11,6 +11,9 @@ one SQLite file, no accounts, no cloud.
 - **HTTP evidence**: raw request/response pairs for each finding (the Burp extension will send these)
 - **Screenshots**: PNG/JPEG images per finding, numbered as figures across the report (type is checked
   from the file's bytes; SVG is rejected). Exports embed them, so the HTML/PDF/Markdown stay self-contained
+- **Evidence files**: attach any file to a finding (.pcap, .har, .log, .json, .zip, scripts ...), several at once
+  or by drag and drop. The SHA-256 is computed on upload and printed in an "Attached files" table in the
+  HTML/Markdown/PDF report, so the client can verify every file; JSON exports carry the files and check the hash on import
 - **Screenshot editor**: crop, arrows, boxes and irreversible pixelation of secrets, right in the browser; the
   untouched original is kept and can be restored at any time
 - **Confidence** per finding (certain / probable / unknown)
@@ -110,10 +113,21 @@ This opens <http://127.0.0.1:5055/> in your browser. Options:
   *original* link and **Restore original**, which brings the upload back and discards the edit. Exports
   (HTML/Markdown/PDF) show the edited image; the original stays in ptreport, in JSON backups and in duplicated or
   retest reports (it is **not** gone from ptreport — delete the screenshot to remove both).
-- **Retest**: on a report, **Create retest report** copies targets, findings (with evidence and screenshots),
+- **Retest**: on a report, **Create retest report** copies targets, findings (with evidence, screenshots and files),
   structure and CWE texts into a new report linked to the original, with a **Retest summary** section first. Set
   *Retest result* (fixed / partially fixed / not fixed / not tested), date and notes on each finding; a change is
   logged in its history. **Duplicate report** makes an independent copy.
+- **Files** (evidence of any type): on a saved finding, **Files → Add files** takes one or more files (or drop
+  them on the form) with an optional description. Limits: 25 MB per file, 100 MB and 50 files per finding, no empty
+  files. The name is cleaned (directories, control and right-to-left characters, characters Windows does not allow,
+  leading dots removed; at most 180 characters). The MIME type comes from the extension via a fixed table, never
+  from the browser. Each row shows the size, the first 12 characters of the SHA-256 (full value on hover, copy
+  button), the upload time and an editable description. **Download** always saves the file (`Content-Disposition:
+  attachment`, `nosniff`, sandbox CSP); HTML, SVG, XML, JavaScript, PDF and other types that a browser could render
+  are sent as `application/octet-stream`. The response carries `Repr-Digest: sha-256=...` too. Reports list the
+  files (name, size, full SHA-256) after the HTTP evidence; the bytes themselves stay out of HTML/Markdown/PDF and
+  travel in the JSON export (base64, with the SHA-256, verified on import: a mismatch rejects the import). Duplicate
+  and retest copies keep the files.
 - **PDF**: **Preview PDF** opens the PDF typeset from the LaTeX template; Export → PDF downloads it.
 
 ## Report structure, CWE groups, wording
@@ -244,12 +258,16 @@ The token is shown under **Settings** and can be regenerated there.
 | GET | `/findings/{id}` | Finding with evidence |
 | POST | `/findings/{id}/evidence` | Attach a raw HTTP request/response |
 | POST | `/findings/{id}/attachments` | Attach a screenshot: `{"caption": "...", "data_base64": "..."}` |
+| GET | `/findings/{id}/files` | Evidence files of a finding (name, size, MIME type, SHA-256, description, download URL) |
+| POST | `/findings/{id}/files` | Upload evidence files: `multipart/form-data`, one or more `file` parts, optional `description` |
 | GET | `/templates?language=en&q=xss` | Finding template library |
 | GET | `/cwe?q=xss` | MITRE CWE catalogue (`{"id": "CWE-79", "name": ...}`) |
 | GET/POST | `/reports/{id}/notes` | List / add working notes |
 
 ```bash
 TOKEN=$(ptreport --show-api-token)
+curl -s -H "Authorization: Bearer $TOKEN" -F file=@login.pcap -F file=@burp.har -F description='Login traffic' \
+  http://127.0.0.1:5055/api/v1/findings/1/files
 curl -s -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
   -d '{"title":"IDOR in /api/orders/{id}","cvss_version":"3.1",
        "cvss_vector":"CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N","cwe":"639",

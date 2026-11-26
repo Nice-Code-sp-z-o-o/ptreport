@@ -11,7 +11,7 @@ from werkzeug.exceptions import HTTPException
 
 from ptreport import __version__, db, rendering, security
 
-MAX_UPLOAD_BYTES = 256 * 1024 * 1024  # JSON imports carry screenshots; the app only listens locally
+MAX_UPLOAD_BYTES = 256 * 1024 * 1024  # JSON imports carry screenshots and files; the app only listens locally
 
 
 def default_data_dir() -> Path:

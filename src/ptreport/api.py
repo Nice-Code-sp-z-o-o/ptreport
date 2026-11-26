@@ -11,10 +11,11 @@ from ptreport import __version__, repo
 from ptreport.cwe import catalogue_version as cwe_catalogue_version
 from ptreport.cwe import cwe_choices
 from ptreport.cwe import search as cwe_search
-from ptreport.db import get_db
+from ptreport.db import get_db, transaction
 from ptreport.security import require_api_token
 from ptreport.validation import (
     IMAGE_MAX_PER_FINDING,
+    validate_uploads,
     validate_attachment,
     validate_evidence,
     validate_finding,
@@ -45,13 +46,15 @@ def _report(report_id: int) -> dict:
 
 
 def _finding_out(report: dict, f: dict) -> dict:
-    out = {k: v for k, v in f.items() if k not in ("evidence", "targets", "attachments", "severity_manual")}
+    out = {k: v for k, v in f.items()
+           if k not in ("evidence", "targets", "attachments", "files", "severity_manual")}
     out["display_id"] = repo.finding_display_id(report, f, repo.get_settings(get_db()))
     out["url"] = url_for("web.finding_edit", finding_id=f["id"], _external=True)
     if "targets" in f:
         out["target_ids"] = [t["id"] for t in f["targets"]]
     out["evidence_count"] = len(f.get("evidence", []))
     out["screenshot_count"] = len(f.get("attachments", []))
+    out["file_count"] = len(f.get("files", []))
     return out
 
 
@@ -176,6 +179,40 @@ def attachment_create(finding_id: int):
         return _unprocessable(errors)
     attachment_id = repo.create_attachment(get_db(), f, data)
     return jsonify(attachment=repo.get_attachment(get_db(), attachment_id)), 201
+
+
+def _finding(finding_id: int) -> dict:
+    f = repo.get_finding(get_db(), finding_id)
+    if f is None:
+        abort(404, description="Finding not found.")
+    return f
+
+
+def _file_out(x: dict) -> dict:
+    return {**x, "download_url": url_for("web.file_download", file_id=x["id"], _external=True)}
+
+
+@bp.get("/findings/<int:finding_id>/files")
+def files(finding_id: int):
+    """Evidence files of a finding (metadata only: name, size, MIME type, SHA-256, description)."""
+    f = _finding(finding_id)
+    return jsonify(files=[_file_out(x) for x in f["files"]])
+
+
+@bp.post("/findings/<int:finding_id>/files")
+def file_create(finding_id: int):
+    """Upload evidence files: multipart/form-data with one or more "file" parts and an optional "description".
+    Same validation and limits as the web UI; the SHA-256 is computed by the server."""
+    f = _finding(finding_id)
+    if not request.mimetype.startswith("multipart/form-data"):
+        abort(415, description="Send the files as multipart/form-data.")
+    cleaned, errors = validate_uploads(request.files.getlist("file") + request.files.getlist("files"),
+                                       request.form.get("description", ""), repo.file_usage(get_db(), finding_id))
+    if errors:
+        return _unprocessable(errors)
+    with transaction(get_db()):
+        new_ids = [repo.create_file(get_db(), f, clean) for clean in cleaned]
+    return jsonify(files=[_file_out(repo.get_file(get_db(), i)) for i in new_ids]), 201
 
 
 @bp.get("/templates")

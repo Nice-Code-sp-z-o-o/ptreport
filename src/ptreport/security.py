@@ -10,12 +10,13 @@
 
 from __future__ import annotations
 
+import hashlib
 import hmac
 import os
 import secrets
 from pathlib import Path
 
-from flask import Flask, abort, current_app, jsonify, request, session
+from flask import Flask, abort, current_app, g, jsonify, request, session
 
 LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
@@ -111,17 +112,52 @@ def init_app(app: Flask) -> None:
     app.jinja_env.globals["csrf_token"] = csrf_token
 
 
+FULL_ACCESS = frozenset({"*"})
+INTEGRATION_TOKEN_PREFIX = "ptr_"  # noqa: S105 - marks integration tokens, not a secret
+
+
+def new_integration_token() -> tuple[str, str]:
+    """A fresh integration token and its SHA-256 (only the hash is stored; the token is shown once)."""
+    token = INTEGRATION_TOKEN_PREFIX + secrets.token_urlsafe(32)
+    return token, token_sha256(token)
+
+
+def token_sha256(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _unauthorized():
+    current_app.logger.warning("Rejected API request with missing/invalid token")
+    response = jsonify(error="unauthorized", message="Missing or invalid API token.")
+    response.status_code = 401
+    response.headers["WWW-Authenticate"] = 'Bearer realm="ptreport"'
+    return response
+
+
 def require_api_token():
-    """before_request hook for the API blueprint."""
+    """before_request hook for the API blueprint.
+
+    The main API token has full access. Integration tokens (Settings -> Integrations) are looked up by their
+    SHA-256 and carry scopes (``read``, ``propose``); ``g.api_scopes`` / ``g.api_token_id`` tell the endpoints
+    which one was used."""
     header = request.headers.get("Authorization", "")
     scheme, _, token = header.partition(" ")
+    token = token.strip()
+    if scheme.lower() != "bearer" or not token or len(token) > 200:
+        return _unauthorized()
     expected = current_app.config["API_TOKEN"]
-    if scheme.lower() != "bearer" or not token or not hmac.compare_digest(
-        token.strip().encode(), expected.encode()
-    ):
-        current_app.logger.warning("Rejected API request with missing/invalid token")
-        response = jsonify(error="unauthorized", message="Missing or invalid API token.")
-        response.status_code = 401
-        response.headers["WWW-Authenticate"] = 'Bearer realm="ptreport"'
-        return response
-    return None
+    if hmac.compare_digest(token.encode(), expected.encode()):
+        g.api_scopes, g.api_token_id = FULL_ACCESS, None
+        return None
+    if token.startswith(INTEGRATION_TOKEN_PREFIX):
+        from ptreport import repo
+        from ptreport.db import get_db
+
+        digest = token_sha256(token)
+        row = repo.find_integration_token(get_db(), digest)
+        if row is not None and hmac.compare_digest(row["token_sha256"].encode(), digest.encode()):
+            g.api_scopes = frozenset(s for s in row["scopes"].split(",") if s)
+            g.api_token_id = row["id"]
+            repo.mark_integration_token_used(get_db(), row["id"])
+            return None
+    return _unauthorized()

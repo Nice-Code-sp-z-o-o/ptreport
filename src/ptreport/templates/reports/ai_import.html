@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, crumbs %}
+{% block title %}Import AI results · {{ report.title }}{% endblock %}
+{% block content %}
+<div class="stack-lg narrow">
+  {{ crumbs([('Reports', url_for('web.index'), False), (report.title, url_for('web.report_detail', report_id=report.id), False), ('AI queue', url_for('web.ai_queue', report_id=report.id), False), ('Import', None, False)]) }}
+  <h1>Import AI results</h1>
+  <p class="prose">Upload results from an AI agent or an analysis tool. Every result becomes a <strong>proposal</strong> in the <a href="{{ url_for('web.ai_queue', report_id=report.id) }}">AI queue</a> of <strong>{{ report.title }}</strong>; nothing is added to the report before you accept it there.{% if report.retest_of %} This is a retest report: SARIF and capsule results that match an existing finding (same CWE and target or file) are offered as <em>retest results</em> (“still present → not fixed”). Findings missing from the file are never marked fixed.{% endif %}</p>
+  {% if errors %}
+    <div class="flash flash-error" role="alert">
+      {{ icon('alert') }}
+      <div class="flash-body"><strong>Import failed:</strong>
+        <ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul>
+      </div>
+    </div>
+  {% endif %}
+  <form method="post" enctype="multipart/form-data" class="panel stack-lg">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <div class="field">
+      <label for="f-file">Results file <span class="req" aria-hidden="true">*</span></label>
+      <input class="file-input" id="f-file" type="file" name="file" accept=".sarif,.json,application/json,application/sarif+json" required>
+      <p class="hint">SARIF 2.1.0 (<code>ptai export --sarif</code>, Semgrep, CodeQL …), a pentest-ai proof capsule, or ptreport proposal JSON (see <code>docs/integrations.md</code>). Up to 50 MB.</p>
+    </div>
+    <div class="field">
+      <label for="f-format">Format</label>
+      <div class="select-wrap">
+        <select class="select" id="f-format" name="format">
+          <option value="">Detect automatically</option>
+          {% for f in formats %}<option value="{{ f }}">{{ format_labels[f] }}</option>{% endfor %}
+        </select>
+        {{ icon('chevron-down') }}
+      </div>
+    </div>
+    <div class="cluster">
+      <button class="btn btn-primary" type="submit">{{ icon('upload') }}Read file</button>
+      <a class="btn btn-ghost" href="{{ url_for('web.ai_queue', report_id=report.id) }}">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

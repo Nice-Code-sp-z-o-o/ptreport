@@ -33,6 +33,7 @@
     </div>
     <div class="cluster">
       <a class="btn" href="{{ url_for('web.notes', report_id=report.id) }}">{{ icon('note') }}Notes{% if note_count %} <span class="tab-count">{{ note_count }}</span>{% endif %}</a>
+      <a class="btn" href="{{ url_for('web.ai_queue', report_id=report.id) }}">{{ icon('bot') }}AI queue{% if ai_count %} <span class="tab-count" aria-label="{{ ai_count }} pending">{{ ai_count }}</span>{% endif %}</a>
       <a class="btn" href="{{ url_for('web.report_edit', report_id=report.id) }}">{{ icon('edit') }}Edit details</a>
       <a class="btn" href="{{ url_for('web.report_preview', report_id=report.id) }}" target="_blank" rel="noopener" data-pdf-preview>{{ icon('external') }}Preview PDF<span class="visually-hidden"> (opens a new tab)</span></a>
       <details class="dropdown">
@@ -67,6 +68,7 @@
           {{ post_button(url_for('web.findings_renumber', report_id=report.id), 'Renumber by severity', 'btn btn-sm', 'Reorder and renumber all findings by severity (Critical first)?') }}
         {% endif %}
         <a class="btn btn-sm" href="{{ url_for('web.scan_import', report_id=report.id) }}">{{ icon('upload') }}Import scan</a>
+        <a class="btn btn-sm" href="{{ url_for('web.ai_results_import', report_id=report.id) }}">{{ icon('bot') }}Import AI results</a>
         <a class="btn btn-sm" href="{{ url_for('web.finding_new', report_id=report.id) }}#from-template">{{ icon('list') }}From template</a>
         <a class="btn btn-primary btn-sm" href="{{ url_for('web.finding_new', report_id=report.id) }}">{{ icon('plus') }}Add finding</a>
       </div>
@@ -86,7 +88,9 @@
                 </span></td>
                 <td class="col-id">{{ f.display_id }}</td>
                 <td class="col-title"><a href="{{ url_for('web.finding_edit', finding_id=f.id) }}">{{ f.title }}</a>
-                  {% if f.evidence %}<span class="chip pill-src" title="HTTP evidence items">{{ f.evidence|length }} req</span>{% endif %}</td>
+                  {% if f.evidence %}<span class="chip pill-src" title="HTTP evidence items">{{ f.evidence|length }} req</span>{% endif %}
+                  {% if f.code_evidence %}<span class="chip pill-src" title="Code evidence items">{{ f.code_evidence|length }} code</span>{% endif %}
+                  {% if f.origin %}<span class="chip pill-src pill-ai" title="{{ f.origin }}"><span aria-hidden="true">AI</span><span class="visually-hidden">Added from an AI proposal: {{ f.origin }}</span></span>{% endif %}</td>
                 <td>{{ severity_badge(f.severity) }}</td>
                 <td class="col-cvss">{% if f.cvss_score is not none %}{{ cvss_chip(f) }}{% else %}<span class="cvss-none">—</span>{% endif %}</td>
                 <td class="col-cwe">{% if f.cwe %}<span title="{{ f.cwe|cwe_name }}">{{ f.cwe }}</span>{% endif %}</td>
@@ -121,7 +125,7 @@
             {% for t in targets %}
               <tr>
                 <td class="col-title">{{ t.name }}</td>
-                <td>{{ TARGET_KIND_LABELS['en'][t.kind] }}</td>
+                <td>{% if t.kind in ('binary', 'firmware') %}<span class="kind-label">{{ icon('binary' if t.kind == 'binary' else 'chip') }}{{ TARGET_KIND_LABELS['en'][t.kind] }}</span>{% else %}{{ TARGET_KIND_LABELS['en'][t.kind] }}{% endif %}</td>
                 <td class="mono small break">{{ t.address }}</td>
                 <td class="small">{{ t.description|truncate(120) }}</td>
                 <td class="col-actions"><div class="cluster">

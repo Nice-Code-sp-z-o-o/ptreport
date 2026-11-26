@@ -284,7 +284,7 @@ def test_migration_adds_columns_to_existing_attachments(tmp_path):
     conn = connect(tmp_path / "old.db")
     for version, script in enumerate(MIGRATIONS[:11], start=1):
         conn.executescript("BEGIN;\n" + script + f"\nPRAGMA user_version = {version};\nCOMMIT;")
-    assert migrate(conn) == len(MIGRATIONS) == 14
+    assert migrate(conn) == len(MIGRATIONS) >= 14
     columns = {r["name"] for r in conn.execute("PRAGMA table_info(attachments)")}
     assert {"original_mime", "original_data", "original_sha256", "edited_at"} <= columns
     conn.close()

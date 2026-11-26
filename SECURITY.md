@@ -25,7 +25,11 @@ Only the latest release (and `main`) receives security fixes.
 
 - The web app listens on **127.0.0.1** by default and rejects foreign `Host` headers (DNS rebinding).
   Binding to another interface needs an explicit `--host` plus `--allow-host`.
-- Every form is CSRF-protected; the JSON API (`/api/v1`) needs a bearer token.
+- Every form is CSRF-protected; the JSON API (`/api/v1`) needs a bearer token. Integration tokens for AI
+  agents are scoped (`read`, `propose`), stored as SHA-256 and revocable.
+- AI agents (API, `ptreport mcp`, SARIF / capsule imports) can only create **proposals**; nothing reaches a
+  report until a person accepts it in the AI queue, and proposals are validated again when accepted. The MCP
+  server uses stdio only (no network port).
 - Strict Content-Security-Policy, no inline scripts; user content is escaped, Markdown is rendered by our
   own restricted renderer.
 - Uploaded files are never rendered: downloads are `attachment` + `nosniff` + sandbox CSP, active types
@@ -35,8 +39,10 @@ Only the latest release (and `main`) receives security fixes.
 - Data lives in a local SQLite database in your data directory; ptreport makes no outbound connections
   except the ones you start (Tectonic package downloads, Ollama on localhost).
 
-In scope: anything that lets a remote web page, an imported file (scanner XML, JSON backup, screenshot,
-evidence file, LaTeX template) or a crafted HTTP request read or change data, run code, or reach the network.
+In scope: anything that lets a remote web page, an imported file (scanner XML, SARIF, ptai capsule, proposal
+JSON, JSON backup, screenshot, evidence file, LaTeX template), a crafted HTTP request, or an AI agent holding an
+integration token or talking to `ptreport mcp` read or change data beyond what its scope allows, bypass the
+review queue, run code, or reach the network.
 
 Out of scope: attacks that need local access to your user account or data directory, and running ptreport
 deliberately exposed to an untrusted network.

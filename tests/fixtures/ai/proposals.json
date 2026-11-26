@@ -1,0 +1,15 @@
+{
+  "format": "ptreport-proposals",
+  "version": 1,
+  "source": {"tool": "re-agent", "version": "0.3", "run_id": "ghidra-12", "model": "local-model"},
+  "proposals": [
+    {"kind": "target", "data": {"name": "Router firmware 2.1", "kind": "firmware", "address": "fw/router-2.1.bin"}},
+    {"kind": "finding", "verdict": "candidate",
+     "data": {"title": "Hard-coded root password in firmware", "severity": "high", "cwe": "798",
+              "targets": [{"name": "Router firmware 2.1", "kind": "firmware", "address": "fw/router-2.1.bin"}],
+              "description": "The login binary compares the password with a constant.",
+              "code_evidence": [{"title": "check_pw", "location": "bin/login: check_pw @ 0x401a2c", "language": "pseudo",
+                                 "code": "int check_pw(char *p) {\n  return strcmp(p, \"r00t!\") == 0;\n}",
+                                 "note": "Ghidra decompilation."}]}}
+  ]
+}

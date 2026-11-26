@@ -34,6 +34,7 @@ from jinja2.sandbox import SandboxedEnvironment
 from ptreport.cvss_service import vector_strip
 from ptreport.cwe import cwe_name, cwe_url
 from ptreport.rendering import (
+    CODE_LANGUAGE_LABELS,
     CONFIDENCE_LABELS,
     CVSS_RATING_LABELS,
     SEVERITY_LABELS,
@@ -310,6 +311,9 @@ def sample_context() -> dict:
         "evidence": [{"title": "Proof", "request": "GET / HTTP/1.1\nHost: portal.example\n\n",
                       "response": "HTTP/1.1 200 OK\n\n<script>alert(1)</script>", "source": "manual"}],
         "attachments": [],
+        "code_evidence": [{"title": "Unescaped output", "location": "web/templates/comment.py:42 render_comment",
+                           "language": "python", "code": "return f\"<p>{body}</p>\"  # \\ $ % { } _ ^ ~ #",
+                           "note": "The body is user input."}],
         "files": [{"filename": "capture_2026-01-02_portal-login.pcapng", "description": "Traffic during login",
                    "mime": "application/vnd.tcpdump.pcap", "size": 48213, "sha256": "ab" * 32,
                    "uploaded_at": "2026-01-02 10:00:00"}],
@@ -343,7 +347,7 @@ def sample_context() -> dict:
         "sections": sections, "groups": groups, "matrix": matrix, "fingerprint": "0" * 64,
         "per_target": [{"name": "Customer portal", "counts": {**counts}, "total": 1}],
         "sev_labels": labels["sev"], "status_labels": labels["status"], "conf_labels": labels["conf"],
-        "report": report, "cvss_header": "CVSS 3.1", "brand": {"color": "1D3557", "logo": None},
+        "code_lang_labels": CODE_LANGUAGE_LABELS["en"], "report": report, "cvss_header": "CVSS 3.1", "brand": {"color": "1D3557", "logo": None},
         "versions": [version], "all_versions": [version], "versions_have_author": True,
         "show_finding_history": True, "targets": finding["targets"], "findings": [finding], "counts": counts,
         "severities": ("critical", "high", "medium", "low", "info"), "L": labels["L"], "lang": "en",

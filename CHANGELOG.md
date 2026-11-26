@@ -5,6 +5,21 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- AI intake queue: agents create proposals (findings, HTTP evidence, code evidence, files, retest results,
+  targets) that wait per report until you accept, merge or reject them; duplicate hints, bulk actions,
+  re-validation on accept. Accepted findings keep their origin (tool, run, verdict, model) as an "AI" badge.
+- Integration tokens with `read` / `propose` scopes (Settings → Integrations), stored hashed, revocable;
+  `GET/POST /api/v1/reports/<id>/proposals` with per-token rate limiting.
+- `ptreport mcp`: a Model Context Protocol server over stdio (no new dependency) with read tools and
+  proposal-only write tools; `--report` and `--read-only`.
+- Import of SARIF 2.1.0, pentest-ai proof capsules and ptreport proposal JSON v1 into the AI queue (web and
+  `ptreport import-ai`); in retest reports matching results become "not fixed" retest proposals.
+- Code evidence on findings (HTML / Markdown / PDF, JSON backup, API) and the target types *binary* and
+  *firmware* for reverse engineering.
+- Engagement scope for agents: `ptreport scope`, `GET /api/v1/reports/<id>/scope`, MCP `get_scope`.
+- `docs/integrations.md`: proposal schema, MCP setup, Decepticon / pentest-ai / RE recipes.
+
 ## [0.1.0]
 
 First public version.

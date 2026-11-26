@@ -416,6 +416,20 @@ CVSS \VAR{f.cvss_version} & \ptCvss{\VAR{f|cvss_rating_key}}{\VAR{f.cvss_score|s
 \BLOCK{endfor}
 \BLOCK{endif}
 
+%# Code evidence (reverse engineering, code review): read from files with \VerbatimInput, never parsed as TeX.
+\BLOCK{if f.code_evidence}
+\ptBlockTitle{\VAR{L.code_evidence}}
+\BLOCK{for c in f.code_evidence}
+\needspace{6\baselineskip}
+\BLOCK{if c.title}{\small\bfseries \VAR{c.title}}\par\vspace{2pt}\BLOCK{endif}
+\BLOCK{if c.location}{\footnotesize\color{muted}\VAR{L.code_location}: \texttt{\VAR{c.location|breakable}}}\par\vspace{3pt}\BLOCK{endif}
+\ptHttp{\VAR{code_lang_labels[c.language]}}{\VAR{c.code|verbatim_file('code')}}
+\BLOCK{if c.note}
+{\small \VAR{c.note|richtext}}
+\BLOCK{endif}
+\BLOCK{endfor}
+\BLOCK{endif}
+
 %# Evidence files: name, size and SHA-256 (in two halves, so it always fits its column) for integrity checks.
 %# One fixed-width tabular per row, not a longtable: a page can break between any two rows. (A longtable after a
 %# \ptBlockTitle on the same page can make TeX break at that title's \needspace and repeat the table header there.)

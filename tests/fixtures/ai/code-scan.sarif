@@ -1,0 +1,67 @@
+{
+  "version": "2.1.0",
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "Semgrep OSS",
+          "semanticVersion": "1.99.0",
+          "rules": [
+            {
+              "id": "c.lang.security.insecure-use-strcpy",
+              "name": "insecure-use-strcpy",
+              "shortDescription": {"text": "Use of strcpy without bounds check"},
+              "fullDescription": {"text": "strcpy() does not check the destination size and can overflow the buffer."},
+              "help": {"text": "Use strlcpy() or check the length first."},
+              "helpUri": "https://cwe.mitre.org/data/definitions/120.html",
+              "properties": {"tags": ["security", "external/cwe/cwe-120"], "security-severity": "8.1"}
+            },
+            {
+              "id": "python.lang.security.audit.eval-detected",
+              "shortDescription": {"text": "eval() on user input"},
+              "properties": {"tags": ["CWE-95: Eval Injection"], "security-severity": "9.3"}
+            }
+          ]
+        }
+      },
+      "automationDetails": {"id": "nightly/2026-11-25"},
+      "results": [
+        {
+          "ruleId": "c.lang.security.insecure-use-strcpy",
+          "message": {"text": "strcpy into a 64-byte stack buffer from {0}."  , "arguments": ["argv[1]"]},
+          "locations": [{
+            "physicalLocation": {"artifactLocation": {"uri": "src/auth/check.c", "uriBaseId": "%SRCROOT%"},
+                                 "region": {"startLine": 42, "endLine": 44, "snippet": {"text": "char buf[64];\nstrcpy(buf, argv[1]);\nreturn check_pw(buf);"}}},
+            "logicalLocations": [{"fullyQualifiedName": "check_login"}]
+          }]
+        },
+        {
+          "ruleId": "c.lang.security.insecure-use-strcpy",
+          "message": {"text": "strcpy into a 64-byte stack buffer from {0}.", "arguments": ["argv[1]"]},
+          "locations": [{
+            "physicalLocation": {"artifactLocation": {"uri": "src/auth/check.c", "uriBaseId": "%SRCROOT%"},
+                                 "region": {"startLine": 42, "endLine": 44, "snippet": {"text": "char buf[64];\nstrcpy(buf, argv[1]);\nreturn check_pw(buf);"}}},
+            "logicalLocations": [{"fullyQualifiedName": "check_login"}]
+          }]
+        },
+        {
+          "ruleId": "python.lang.security.audit.eval-detected",
+          "message": {"text": "eval() on request data."},
+          "locations": [{"physicalLocation": {"artifactLocation": {"uri": "file:///srv/app/views.py"}, "region": {"startLine": 7}}}]
+        },
+        {
+          "ruleId": "python.lang.security.audit.eval-detected",
+          "message": {"text": "eval() in a test helper."},
+          "suppressions": [{"kind": "inSource", "status": "accepted"}],
+          "locations": [{"physicalLocation": {"artifactLocation": {"uri": "tests/helpers.py"}, "region": {"startLine": 3}}}]
+        },
+        {
+          "ruleId": "python.lang.security.audit.eval-detected",
+          "kind": "pass",
+          "message": {"text": "No eval() found."}
+        }
+      ]
+    }
+  ]
+}

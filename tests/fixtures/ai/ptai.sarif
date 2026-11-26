@@ -1,0 +1,80 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/sarif-2.1/schema/sarif-schema-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "pentest-ai",
+          "version": "1.6.2",
+          "informationUri": "https://github.com/0xSteph/pentest-ai",
+          "rules": [
+            {
+              "id": "CWE-79",
+              "name": "Reflected XSS (query reflection)",
+              "shortDescription": {"text": "Reflected XSS (query reflection)"},
+              "fullDescription": {"text": "The q parameter of /search is reflected into the HTML body without encoding."},
+              "defaultConfiguration": {"level": "warning"},
+              "help": {"text": "Encode user input for the HTML context before writing it into the page."}
+            },
+            {
+              "id": "CWE-89",
+              "name": "SQL injection in login",
+              "shortDescription": {"text": "SQL injection in login"},
+              "fullDescription": {"text": "The username field is concatenated into a SQL query."},
+              "defaultConfiguration": {"level": "error"}
+            },
+            {
+              "id": "pentest-ai/headers",
+              "name": "Missing security headers",
+              "shortDescription": {"text": "Missing security headers"},
+              "defaultConfiguration": {"level": "note"}
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "CWE-79",
+          "ruleIndex": 0,
+          "level": "warning",
+          "message": {"text": "Input in q is reflected unescaped (token survived raw 3/3)."},
+          "locations": [{"physicalLocation": {"artifactLocation": {"uri": "https://shop.example/search?q=ptai"}}}],
+          "properties": {
+            "cvss_score": 6.1,
+            "cwe_id": "CWE-79",
+            "ptai_export_version": 1,
+            "verdict": "verified",
+            "oracle_kind": "unescaped_reflection",
+            "replay": {"successes": 3, "attempts": 3},
+            "verification_recipe": {"oracle": "http_reflect", "param": "q"}
+          },
+          "webRequest": {"protocol": "HTTP", "version": "1.1", "method": "GET",
+                         "target": "https://shop.example/search?q=%3Cscript%3Ealert(1)%3C%2Fscript%3E",
+                         "headers": {"User-Agent": "ptai"}},
+          "webResponse": {"protocol": "HTTP", "version": "1.1", "statusCode": 200, "reasonPhrase": "OK",
+                          "headers": {"Content-Type": "text/html"},
+                          "body": {"text": "<html><body>Results for: <script>alert(1)</script></body></html>"}}
+        },
+        {
+          "ruleId": "CWE-89",
+          "ruleIndex": 1,
+          "level": "error",
+          "message": {"text": "Boolean-based blind SQL injection in the username parameter."},
+          "locations": [{"physicalLocation": {"artifactLocation": {"uri": "https://shop.example/login"}}}],
+          "properties": {"cvss_score": 9.8, "cwe_id": "CWE-89", "verdict": "candidate", "oracle_kind": "differential",
+                         "replay": {"successes": 1, "attempts": 3}}
+        },
+        {
+          "ruleId": "pentest-ai/headers",
+          "ruleIndex": 2,
+          "level": "note",
+          "message": {"text": "Content-Security-Policy is missing."},
+          "locations": [{"physicalLocation": {"artifactLocation": {"uri": "https://shop.example/"}}}],
+          "properties": {"verdict": "refuted"}
+        }
+      ],
+      "invocations": [{"executionSuccessful": true, "properties": {"engagement_id": "eng-7f3a", "target": "https://shop.example", "scope": "full"}}]
+    }
+  ]
+}

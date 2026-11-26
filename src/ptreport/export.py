@@ -21,6 +21,7 @@ from ptreport.cwe import cwe_name, cwe_url
 from ptreport.db import transaction
 from ptreport.cvss_service import rating_for_score
 from ptreport.rendering import (
+    CODE_LANGUAGE_LABELS,
     human_size,
     history_text,
     labels_for,
@@ -37,6 +38,7 @@ from ptreport.validation import (
     is_timestamp,
     validate_attachment,
     validate_file,
+    validate_code_evidence,
     validate_cwe_note,
     validate_history_entry,
     validate_note,
@@ -44,6 +46,7 @@ from ptreport.validation import (
     validate_section,
     validate_evidence,
     validate_finding,
+    validate_origin,
     validate_report,
     validate_target,
 )
@@ -144,6 +147,7 @@ def build_context(conn: sqlite3.Connection, report_id: int, inline_images: bool 
         "sev_labels": labels["sev"],
         "status_labels": labels["status"],
         "conf_labels": labels["conf"],
+        "code_lang_labels": CODE_LANGUAGE_LABELS[lang],
         "fingerprint": "",
         "cwe_notes": [{**n, "title_override": n["title"]} for n in repo.list_cwe_notes(conn, report_id).values()],
         "report": report,
@@ -226,6 +230,9 @@ def _fence(body: str, lang: str = "") -> str:
     longest = max((len(m) for m in re.findall(r"`+", body)), default=0)
     fence = "`" * max(3, longest + 1)
     return f"{fence}{lang}\n{body}\n{fence}"
+
+
+MD_CODE_LANG = {"c": "c", "cpp": "cpp", "asm": "asm", "pseudo": "c", "java": "java", "python": "python"}
 
 
 def _md_escape_inline(text: str) -> str:
@@ -346,6 +353,17 @@ def to_markdown(ctx: dict) -> str:
                 out.extend([f"*{L['request']}:*", "", _fence(e["request"], "http"), ""])
                 if e["response"]:
                     out.extend([f"*{L['response']}:*", "", _fence(e["response"], "http"), ""])
+        if f.get("code_evidence"):
+            out.extend([f"{sub} {L['code_evidence']}", ""])
+            for c in f["code_evidence"]:
+                if c["title"]:
+                    out.extend([f"**{_md_escape_inline(c['title'])}**", ""])
+                location = c["location"].replace("`", "'")
+                where = f"*{L['code_location']}:* `{location}` · " if location else ""
+                out.extend([where + ctx["code_lang_labels"][c["language"]], "",
+                            _fence(c["code"], MD_CODE_LANG.get(c["language"], "")), ""])
+                if c["note"]:
+                    out.extend([c["note"], ""])
         if f["files"]:
             out.extend([f"{sub} {L['attached_files']}", "",
                         f"| {L['file_name']} | {L['file_size']} | {L['sha256']} |", "|---|---:|---|"])
@@ -474,11 +492,13 @@ def to_json(ctx: dict, file_blobs: dict[int, bytes] | None = None) -> dict:
                 **{f: fd[f] for f in repo.FINDING_FIELDS if f not in ("severity", "cvss_score")},
                 "severity": fd["severity"],
                 "position": fd["position"],
+                "origin": fd.get("origin", ""),
                 "targets": [t["id"] for t in fd["targets"]],
                 "evidence": [{f: e[f] for f in repo.EVIDENCE_FIELDS} for e in fd["evidence"]],
                 "history": [{f: h[f] for f in repo.HISTORY_FIELDS} for h in fd["history"]],
                 "attachments": [_attachment_json(a) for a in fd["attachments"]],
                 "files": [_file_json(x, file_blobs) for x in fd["files"]],
+                "code_evidence": [{f: c[f] for f in repo.CODE_FIELDS} for c in fd.get("code_evidence", [])],
             }
             for fd in ctx["findings"]
         ],
@@ -574,7 +594,7 @@ def import_json(conn: sqlite3.Connection, payload: Any) -> int:
         targets.append((ref, clean))
     known_refs = {ref for ref, _ in targets if ref is not None}
 
-    findings: list[tuple[dict, list, list[dict], list[dict], list[dict], list[dict]]] = []
+    findings: list[tuple[dict, list, list[dict], list[dict], list[dict], list[dict], list[dict]]] = []
     seen_external_ids: set[str] = set()
     for i, f in enumerate(findings_in, 1):
         if not isinstance(f, dict):
@@ -588,6 +608,9 @@ def import_json(conn: sqlite3.Connection, payload: Any) -> int:
             refs = []
         clean, errs = validate_finding(f, target_ids_raw=[])
         _collect(f"finding #{i}", errs, problems)
+        clean["origin"], origin_error = validate_origin(f.get("origin"))
+        if origin_error:
+            problems.append(f"finding #{i}: origin: {origin_error}")
         ext = clean.get("external_id", "")
         if ext and ext.lower() in seen_external_ids:
             problems.append(f"finding #{i}: duplicate finding ID {ext}")
@@ -626,6 +649,18 @@ def import_json(conn: sqlite3.Connection, payload: Any) -> int:
                 _collect(f"finding #{i} screenshot #{j} original", orig_errs, problems)
                 att_clean.update(orig_clean)
             attachments.append(att_clean)
+        code = []
+        code_in = f.get("code_evidence") or []
+        if not isinstance(code_in, list) or len(code_in) > MAX_IMPORT_ITEMS:
+            problems.append(f"finding #{i}: code_evidence must be a list")
+            code_in = []
+        for j, c in enumerate(code_in, 1):
+            if not isinstance(c, dict):
+                problems.append(f"finding #{i} code evidence #{j}: must be an object")
+                continue
+            c_clean, c_errs = validate_code_evidence(c)
+            _collect(f"finding #{i} code evidence #{j}", c_errs, problems)
+            code.append(c_clean)
         files, file_problems = _import_files(i, f.get("files"))
         problems.extend(file_problems)
         history = []
@@ -640,7 +675,7 @@ def import_json(conn: sqlite3.Connection, payload: Any) -> int:
             h_clean, h_errs = validate_history_entry(h)
             _collect(f"finding #{i} history #{j}", h_errs, problems)
             history.append(h_clean)
-        findings.append((clean, refs, evidence, attachments, files, history))
+        findings.append((clean, refs, evidence, attachments, files, history, code))
 
     versions = []
     versions_in = payload.get("versions") or []
@@ -706,12 +741,14 @@ def import_json(conn: sqlite3.Connection, payload: Any) -> int:
             new_id = repo.create_target(conn, report_id, data)
             if ref is not None:
                 ref_map[ref] = new_id
-        for clean, refs, evidence, attachments, files, history in findings:
+        for clean, refs, evidence, attachments, files, history, code in findings:
             clean["target_ids"] = sorted({ref_map[r] for r in refs})
             finding_id = repo.create_finding(conn, report_id, clean)
             finding = {"id": finding_id, "report_id": report_id}
             for ev in evidence:
                 repo.create_evidence(conn, finding, ev)
+            for item in code:
+                repo.create_code_evidence(conn, finding, item)
             for att in attachments:
                 repo.create_attachment(conn, finding, att)
             for item in files:

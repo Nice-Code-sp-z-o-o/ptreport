@@ -63,6 +63,8 @@ Create a report, add findings (or start from a template / import a scan), click 
 
 **Evidence**
 - Raw **HTTP request / response** pairs (pasted, imported or sent from Burp)
+- **Code evidence** (decompiled functions, disassembly, source excerpts) and **binary / firmware** targets for
+  reverse engineering
 - **Screenshots** with a built-in **editor**: crop, arrows, boxes and *irreversible* pixelation of secrets; the
   original is kept
 - **Evidence files** of any type (.pcap, .har, logs, scripts …) with a server-side **SHA-256** printed in the
@@ -79,6 +81,9 @@ Create a report, add findings (or start from a template / import a scan), click 
 - **Scanner import**: Burp, Nessus, Nmap, OWASP ZAP, OpenVAS / Greenbone – with a review step
 - **CLI** for scripts (`ptreport report list`, `ptreport import-scan`, `ptreport export 3 --format pdf`)
 - **JSON API** with a bearer token
+- **AI agents** (pentest-ai, Decepticon, reverse-engineering agents …): a built-in **MCP server**
+  (`ptreport mcp`), scoped integration tokens and **SARIF / ptai proof capsule** import. Everything an agent sends
+  lands in a per-report **AI queue** and reaches the report only when you accept it ([details](docs/integrations.md))
 - Optional **AI writing assistant** using a *local* Ollama model (off by default, loopback only)
 
 **Security by design**: binds to 127.0.0.1, CSRF protection, strict CSP, hardened XML parsing (no XXE), uploads never
@@ -105,7 +110,7 @@ rendered, LaTeX without shell escape. See [SECURITY.md](SECURITY.md).
 
 [Install](#install) · [Run](#run) · [Writing findings](#writing-findings) ·
 [Report structure, CWE groups, wording](#report-structure-cwe-groups-wording) · [PDF and LaTeX templates](#pdf-and-latex-templates) ·
-[AI writing assistant](#ai-writing-assistant-local-ollama) · [Command line](#command-line) ·
+[AI writing assistant](#ai-writing-assistant-local-ollama) · [AI agents](#ai-agents-mcp-sarif-ptai) · [Command line](#command-line) ·
 [Burp Suite extension](#burp-suite-extension) · [API](#api-for-the-burp-extension) · [Security model](#security-model) ·
 [Development](#development)
 
@@ -255,6 +260,33 @@ finding you are editing (title, CWE, severity, the four texts above), never othe
 as untrusted text and never rendered as HTML. Requests are rate limited, limited to 20,000 characters per field,
 and time out after 120 s. All prompts are in `src/ptreport/ai.py`.
 
+## AI agents (MCP, SARIF, ptai)
+
+ptreport can be the system of record for AI pentest agents. **Nothing an agent sends reaches a report without
+you accepting it**: results become *proposals* in the report's **AI queue** (report page → **AI queue**), where
+you accept them as new findings, merge them into existing ones (a duplicate hint points at likely matches) or
+reject them. Accepted findings start as *Open*, keep their origin (tool, version, run, verdict, model) behind a
+small **AI** badge, and get a history entry.
+
+```bash
+claude mcp add ptreport -- ptreport mcp --report 3     # MCP server over stdio (Codex / Cursor: see the docs)
+ptreport import-ai 3 pentest.sarif --dry-run           # SARIF 2.1.0, ptai proof capsules, proposal JSON
+ptreport scope 3 --format md                           # the engagement brief to start an agent from
+```
+
+- **MCP tools**: `list_reports`, `get_report`, `get_scope`, `search_cwe`, `list_templates`, `list_proposals`
+  and `propose_finding` / `propose_http_evidence` / `propose_code_evidence` / `propose_file` /
+  `propose_retest_result`, which only ever create proposals (`--read-only` hides them).
+- **Integration tokens** (Settings → Integrations) with the scopes `read` and `propose` for agents that use the
+  API (`POST /api/v1/reports/<id>/proposals`); shown once, stored hashed, revocable.
+- **Imports** (report → **Import AI results**): SARIF from pentest-ai, Semgrep, CodeQL …, pentest-ai proof
+  capsules (the capsule is attached as an evidence file with its SHA-256), and the documented
+  **ptreport proposal JSON v1**. In a retest report, results that match a finding are offered as "not fixed";
+  nothing is ever marked fixed because it is missing.
+
+The proposal schema, MCP setup for Claude Code / Codex / Cursor, recipes for Decepticon, pentest-ai retests and
+reverse-engineering agents, and the security notes are in **[docs/integrations.md](docs/integrations.md)**.
+
 ## Command line
 
 `ptreport` on its own starts the web app (above). With a command it works on the same database directly, so you
@@ -276,6 +308,10 @@ ptreport export 3 --format pdf            # ./ACME_web_app.pdf (same name as the
 ptreport export 3 --format md -o notes/   # into a directory; -o FILE for a name, -o - for stdout
 ptreport export 3 --format json -o backup.json --force    # --force replaces an existing file
 ptreport import-json backup.json          # restores the backup as a new report, prints its id
+
+ptreport import-ai 3 pentest.sarif --dry-run      # SARIF / ptai capsule / proposal JSON -> AI queue
+ptreport scope 3 --format md              # engagement brief for agents (JSON by default)
+ptreport mcp --report 3                   # MCP server on stdin/stdout for agent clients
 ```
 
 `report create` checks its input like the web form (e.g. no digits in assessor names, end date not before the
@@ -340,6 +376,9 @@ The token is shown under **Settings** and can be regenerated there.
 | GET | `/templates?language=en&q=xss` | Finding template library |
 | GET | `/cwe?q=xss` | MITRE CWE catalogue (`{"id": "CWE-79", "name": ...}`) |
 | GET/POST | `/reports/{id}/notes` | List / add working notes |
+| POST | `/findings/{id}/code-evidence` | Add code evidence: `{"title", "location", "language", "code", "note"}` |
+| GET | `/reports/{id}/scope` | Engagement scope for agents (`?format=md` for a Markdown brief) |
+| GET/POST | `/reports/{id}/proposals` | AI queue: list (`?status=`) / queue proposals (see [docs/integrations.md](docs/integrations.md)) |
 
 ```bash
 TOKEN=$(ptreport --show-api-token)
@@ -353,6 +392,10 @@ curl -s -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
 ```
 
 Validation errors return `422 {"error":"validation_failed","errors":{field: message}}`.
+
+Integration tokens (Settings → Integrations) only reach the endpoints of their scopes: `read` (reports,
+targets, findings, scope, proposals, CWE, templates) and `propose` (queueing proposals); everything else needs
+the main token and answers `403` otherwise.
 
 ## Security model
 
@@ -406,6 +449,10 @@ src/ptreport/
   api.py            JSON API v1
   export.py         HTML / Markdown / JSON export, JSON import
   importers.py      scanner parsers (Burp, Nessus, Nmap, ZAP, OpenVAS), hardened XML loading
+  proposals.py      AI intake queue: proposal validation, duplicate hints, accept / merge / reject
+  ai_import.py      SARIF / ptai capsule / proposal JSON imports into the AI queue
+  mcp.py            MCP server (stdio, JSON-RPC 2.0) for agent clients
+  scope.py          engagement scope for agents (JSON, Markdown brief)
   latex.py          LaTeX rendering + PDF compilation (Tectonic)
   data/             MITRE CWE catalogue, starter finding templates
   rendering.py      safe rich-text rendering, report labels (EN/PL)

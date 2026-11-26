@@ -167,6 +167,48 @@
       </form>
     </section>
 
+    <section class="panel stack-lg" id="code-evidence" aria-labelledby="code-h">
+      <h2 id="code-h">Code evidence <span class="muted">({{ code_evidence|length }})</span></h2>
+      <p class="hint">Decompiled functions, disassembly or source excerpts (reverse engineering, code review), always shown as text. Attach the analysed sample itself under <a href="#files">Files</a>: its SHA-256 is printed in the report.</p>
+      {% for c in code_evidence %}
+        <article class="evidence" id="code-{{ c.id }}" aria-labelledby="ce-{{ c.id }}-t">
+          <div class="evidence-head">
+            <div class="evidence-title"><h3 id="ce-{{ c.id }}-t">{{ c.title or ('Snippet #' ~ loop.index) }}</h3><span class="chip pill-src">{{ icon('code') }}{{ CODE_LANGUAGE_LABELS['en'][c.language] }}</span></div>
+            {{ post_button(url_for('web.code_evidence_delete', code_id=c.id), 'Delete', 'btn btn-sm btn-danger', 'Delete this code evidence?', icon_name='trash') }}
+          </div>
+          {% if c.location %}<p class="code-meta small"><span class="muted">Location</span><code class="mono">{{ c.location }}</code></p>{% endif %}
+          <pre class="code" tabindex="0" aria-label="Code{% if c.location %} at {{ c.location }}{% endif %}">{{ c.code }}</pre>
+          {% if c.note %}<div class="prose small">{{ c.note|richtext }}</div>{% endif %}
+          <details class="code-edit">
+            <summary class="btn btn-sm">{{ icon('edit') }}Edit<span class="visually-hidden"> code evidence {{ loop.index }}</span></summary>
+            <form method="post" action="{{ url_for('web.code_evidence_edit', code_id=c.id) }}" class="stack" novalidate data-validate>
+              <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+              <div class="grid-3">
+                {{ input('title', 'Title', c, {}, maxlength=300, prefix='ce' ~ c.id ~ '-') }}
+                {{ input('location', 'Location', c, {}, maxlength=300, mono=True, prefix='ce' ~ c.id ~ '-') }}
+                {{ select('language', 'Language', c, {}, code_languages, CODE_LANGUAGE_LABELS['en'], prefix='ce' ~ c.id ~ '-') }}
+              </div>
+              {{ textarea('code', 'Code', c, {}, rows=12, required=True, mono=True, maxlength=200000, prefix='ce' ~ c.id ~ '-') }}
+              {{ textarea('note', 'Note', c, {}, rows=3, maxlength=20000, prefix='ce' ~ c.id ~ '-') }}
+              <div class="cluster"><button class="btn btn-primary btn-sm" type="submit">Save</button></div>
+            </form>
+          </details>
+        </article>
+      {% endfor %}
+      <form method="post" action="{{ url_for('web.code_evidence_new', finding_id=finding.id) }}" class="stack-lg" novalidate data-validate>
+        <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+        <h3>Add code evidence</h3>
+        <div class="grid-3">
+          {{ input('title', 'Title', code_values, code_errors, maxlength=300, placeholder='Hard-coded password check', prefix='ce-') }}
+          {{ input('location', 'Location (file / function / address)', code_values, code_errors, maxlength=300, mono=True, placeholder='bin/authd: check_pw @ 0x401a2c', prefix='ce-') }}
+          {{ select('language', 'Language', code_values, code_errors, code_languages, CODE_LANGUAGE_LABELS['en'], prefix='ce-') }}
+        </div>
+        {{ textarea('code', 'Code', code_values, code_errors, rows=12, required=True, mono=True, maxlength=200000, prefix='ce-') }}
+        {{ textarea('note', 'Note', code_values, code_errors, rows=3, maxlength=20000, prefix='ce-', hint='Optional: what the reader should look at.') }}
+        <div class="cluster"><button class="btn" type="submit">{{ icon('plus') }}Add code evidence</button></div>
+      </form>
+    </section>
+
     <section class="panel stack-lg" id="screenshots" aria-labelledby="shots-h">
       <h2 id="shots-h">Screenshots <span class="muted">({{ attachments|length }})</span></h2>
       <p class="hint">Shown in the report as numbered figures, in this order. PNG or JPEG, up to 10 MB each.</p>

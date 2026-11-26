@@ -68,6 +68,7 @@
           {{ post_button(url_for('web.findings_renumber', report_id=report.id), 'Renumber by severity', 'btn btn-sm', 'Reorder and renumber all findings by severity (Critical first)?') }}
         {% endif %}
         <a class="btn btn-sm" href="{{ url_for('web.scan_import', report_id=report.id) }}">{{ icon('upload') }}Import scan</a>
+        <a class="btn btn-sm" href="{{ url_for('web.ai_results_import', report_id=report.id) }}">{{ icon('bot') }}Import AI results</a>
         <a class="btn btn-sm" href="{{ url_for('web.finding_new', report_id=report.id) }}#from-template">{{ icon('list') }}From template</a>
         <a class="btn btn-primary btn-sm" href="{{ url_for('web.finding_new', report_id=report.id) }}">{{ icon('plus') }}Add finding</a>
       </div>
@@ -124,7 +125,7 @@
             {% for t in targets %}
               <tr>
                 <td class="col-title">{{ t.name }}</td>
-                <td>{{ TARGET_KIND_LABELS['en'][t.kind] }}</td>
+                <td>{% if t.kind in ('binary', 'firmware') %}<span class="kind-label">{{ icon('binary' if t.kind == 'binary' else 'chip') }}{{ TARGET_KIND_LABELS['en'][t.kind] }}</span>{% else %}{{ TARGET_KIND_LABELS['en'][t.kind] }}{% endif %}</td>
                 <td class="mono small break">{{ t.address }}</td>
                 <td class="small">{{ t.description|truncate(120) }}</td>
                 <td class="col-actions"><div class="cluster">

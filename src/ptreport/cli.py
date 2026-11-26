@@ -31,6 +31,7 @@ from ptreport.validation import LANGUAGES, SEVERITIES
 DEFAULT_PORT = 5055
 EXPORT_FORMATS = ("pdf", "html", "md", "json", "tex")
 SCAN_FORMATS = ("auto", "burp", "nessus", "nmap", "zap", "openvas")
+AI_FORMATS = ("sarif", "ptai", "ptreport")
 
 EXIT_OK, EXIT_ERROR, EXIT_USAGE = 0, 1, 2
 
@@ -150,6 +151,20 @@ def _build_parser() -> argparse.ArgumentParser:
     exp.add_argument("-o", "--output", metavar="FILE",
                      help="output file, a directory, or '-' for standard output")
     exp.add_argument("--force", action="store_true", help="overwrite an existing file")
+
+    aii = sub.add_parser(
+        "import-ai", parents=[common], help="queue SARIF / ptai capsule / proposal JSON results for review",
+        description="Read results of an AI agent or analysis tool (SARIF 2.1.0, a ptai proof capsule, ptreport "
+                    "proposal JSON) and queue them as proposals in the report's AI queue. Nothing reaches the "
+                    "report until you accept it in the web app. In a retest report, results matching an existing "
+                    "finding are queued as retest results (still present -> not fixed).")
+    aii.add_argument("report_id", type=_report_id, help="report id")
+    aii.add_argument("file", help="results file ('-' for standard input)")
+    aii.add_argument("--format", choices=("auto",) + AI_FORMATS, default="auto",
+                     help="file format (default: auto-detect)")
+    aii.add_argument("--dry-run", action="store_true", help="only print what would be queued")
+    aii.add_argument("-y", "--yes", action="store_true",
+                     help="do not ask for confirmation (required when stdin is not a terminal)")
 
     mcp = sub.add_parser(
         "mcp", parents=[common], help="run the MCP server (stdio) for AI agent clients",
@@ -509,6 +524,53 @@ def cmd_import_json(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def cmd_import_ai(args: argparse.Namespace) -> int:
+    from ptreport import ai_import, repo
+
+    if not (args.dry_run or args.yes or sys.stdin.isatty()) or (args.file == "-" and not (args.dry_run or args.yes)):
+        raise CliError("there is no terminal to confirm on: pass --yes (or --dry-run)", EXIT_USAGE)
+    _app, conn = _open(args)
+    with closing(conn):
+        report = _require_report(conn, args.report_id)
+        data = _read_file(args.file, ai_import.MAX_BYTES, "The results file")
+        try:
+            prepared = ai_import.prepare(conn, report["id"], ai_import.parse(
+                data, None if args.format == "auto" else args.format))
+        except ai_import.ImportError_ as exc:
+            raise CliError(str(exc)) from None
+        settings = repo.get_settings(conn)
+        label = ai_import.LABELS[prepared["format"]]
+        print(f"{label}: {len(prepared['items'])} proposal(s) for report #{report['id']}: {_safe(report['title'])}\n")
+        rows = []
+        for p in prepared["plan"]:
+            record, other = p["record"], p["finding"]
+            ref = repo.finding_display_id(report, other, settings) if other else ""
+            action = {"retest": f"retest result for {ref} (not fixed)",
+                      "finding": f"new finding (looks like {ref})" if ref else "new finding"}.get(p["action"],
+                                                                                                 p["action"])
+            data_ = record["data"]
+            rows.append([record["kind"], data_.get("severity", ""), data_.get("cwe", ""),
+                         data_.get("title") or data_.get("name") or data_.get("filename") or "",
+                         record["verdict"], action])
+        if rows:
+            print(_table(["Kind", "Severity", "CWE", "Title", "Verdict", "Will be queued as"], rows,
+                         max_widths={3: 60, 5: 40}))
+            print()
+        for w in prepared["warnings"]:
+            _warn(w)
+        if not prepared["items"]:
+            raise CliError("nothing to import: the file has no usable results")
+        if args.dry_run:
+            print("Dry run: nothing was changed.")
+            return EXIT_OK
+        if not args.yes and not _confirm(f"Queue {len(prepared['items'])} proposal(s) in report #{report['id']}?"):
+            print("Aborted: nothing was queued.", file=sys.stderr)
+            return EXIT_ERROR
+        ids = ai_import.submit(conn, report["id"], prepared)
+    print(f"Queued {len(ids)} proposal(s). Review them in the web app: report #{report['id']} -> AI queue.")
+    return EXIT_OK
+
+
 def cmd_mcp(args: argparse.Namespace) -> int:
     from ptreport import mcp
 
@@ -530,6 +592,7 @@ COMMANDS = {
     ("import-scan", None): cmd_import_scan,
     ("export", None): cmd_export,
     ("import-json", None): cmd_import_json,
+    ("import-ai", None): cmd_import_ai,
     ("mcp", None): cmd_mcp,
 }
 

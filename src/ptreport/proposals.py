@@ -276,9 +276,11 @@ def _clean_finding(data: dict, verdict: str) -> tuple[dict, dict]:
     errors.update(errs)
     out.update(targets=targets, evidence=evidence, code_evidence=code, files=files)
     match = raw.get("match")
-    if isinstance(match, dict):  # importer hints for retest matching (rule id), never trusted for writes
-        rule = match.get("rule_id")
-        out["match"] = {"rule_id": rule[:200]} if isinstance(rule, str) else {}
+    if isinstance(match, dict):  # importer hints for duplicate / retest matching, never written to a finding
+        rule, files = match.get("rule_id"), match.get("files")
+        out["match"] = {"rule_id": rule[:200] if isinstance(rule, str) else "",
+                        "files": [f[:300] for f in files[:20] if isinstance(f, str)] if isinstance(files, list)
+                        else []}
     return out, errors
 
 
@@ -382,8 +384,9 @@ def _proposal_hosts(data: dict) -> set[str]:
                                                           (t.get("name") or "").strip().lower(),) if k}
 
 
-def _code_files(items: list[dict]) -> set[str]:
-    return {f for f in (_code_file(c.get("location", "")) for c in items) if f}
+def _code_files(items: list[dict], hints: dict | None = None) -> set[str]:
+    locations = [c.get("location", "") for c in items] + list((hints or {}).get("files", []))
+    return {f for f in (_code_file(loc) for loc in locations) if f}
 
 
 def title_ratio(a: str, b: str) -> float:
@@ -393,7 +396,7 @@ def title_ratio(a: str, b: str) -> float:
 def duplicate_of(data: dict, findings: list[dict]) -> tuple[dict, str] | None:
     """The existing finding a finding proposal most likely duplicates, and why (same CWE + overlapping target or
     code location; or a title similarity of at least 0.8)."""
-    hosts, files = _proposal_hosts(data), _code_files(data.get("code_evidence", []))
+    hosts, files = _proposal_hosts(data), _code_files(data.get("code_evidence", []), data.get("match"))
     for f in findings:
         if data.get("cwe") and f.get("cwe") == data["cwe"]:
             if hosts & _finding_hosts(f):
@@ -413,7 +416,7 @@ def duplicate_of(data: dict, findings: list[dict]) -> tuple[dict, str] | None:
 def retest_match(data: dict, findings: list[dict]) -> dict | None:
     """The finding of a retest report a re-scan result refers to: same CWE (or, without a CWE, a similar title)
     and an overlapping target or code location. Stricter than :func:`duplicate_of` on purpose."""
-    hosts, files = _proposal_hosts(data), _code_files(data.get("code_evidence", []))
+    hosts, files = _proposal_hosts(data), _code_files(data.get("code_evidence", []), data.get("match"))
     for f in findings:
         same_rule = (data.get("cwe") and f.get("cwe") == data["cwe"]) or (
             (not data.get("cwe") or not f.get("cwe")) and title_ratio(data.get("title", ""), f["title"]) >= 0.9)

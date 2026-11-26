@@ -154,6 +154,17 @@
           </div>
         {% endfor %}
       {% endif %}
+      {% if f.code_evidence %}
+        <h5>{{ L.code_evidence }}</h5>
+        {% for c in f.code_evidence %}
+          <div class="evidence">
+            {% if c.title %}<p class="evidence-title">{{ c.title }}</p>{% endif %}
+            <p class="evidence-label">{% if c.location %}{{ L.code_location }}: <span class="mono">{{ c.location }}</span> · {% endif %}{{ code_lang_labels[c.language] }}</p>
+            <pre class="http">{{ c.code }}</pre>
+            {% if c.note %}{{ c.note|richtext }}{% endif %}
+          </div>
+        {% endfor %}
+      {% endif %}
       {% if f.files %}
         <h5>{{ L.attached_files }}</h5>
         <table class="tbl files">

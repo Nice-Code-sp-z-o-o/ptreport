@@ -12,6 +12,8 @@ manual input when it arrives *and again* when you accept it, and accepting is al
 - [The AI queue](#the-ai-queue)
 - [ptreport proposal JSON v1](#ptreport-proposal-json-v1)
 - [MCP server: `ptreport mcp`](#mcp-server-ptreport-mcp)
+- [Importing SARIF, ptai capsules and proposal files](#importing-sarif-ptai-capsules-and-proposal-files)
+- [Reverse engineering: code evidence, binary and firmware targets](#reverse-engineering-code-evidence-binary-and-firmware-targets)
 - [Integration tokens and the API](#integration-tokens-and-the-api)
 - [Security notes](#security-notes)
 
@@ -269,6 +271,71 @@ claude mcp add ghidra     -- <your Ghidra / IDA MCP bridge command>   # reverse 
 A prompt that works well: *"Read the scope with ptreport get_scope (report 3). Test only those targets. For every
 issue you can verify, call ptreport propose_finding with the request/response that proves it, verdict and
 source; attach code locations with propose_code_evidence."*
+
+## Importing SARIF, ptai capsules and proposal files
+
+Report → **Import AI results** (or AI queue → **Import AI results**) takes a file, detects its format and queues
+one proposal per result, then opens the AI queue. From a shell:
+
+```bash
+ptreport import-ai 3 pentest.sarif --dry-run      # what would be queued (new finding / looks like ACME-002 / retest)
+ptreport import-ai 3 pentest.sarif                # asks "Queue 5 proposal(s) in report #3? [y/N]"
+ptreport import-ai 3 capsule.json --yes --format ptai
+```
+
+`--format` is `auto` (default), `sarif`, `ptai` or `ptreport`. Like `import-scan`, it refuses to run without a
+terminal unless `--yes` (or `--dry-run`) is given. Files are limited to 50 MB, must be UTF-8 JSON and at most 64
+levels deep; at most 2000 results are read. Results that fail validation are skipped with a note, the rest are
+queued. Identical results are queued once.
+
+**SARIF 2.1.0** (`ptai export <engagement> --sarif pentest.sarif`, Semgrep, CodeQL, …):
+
+| SARIF | ptreport |
+|---|---|
+| rule `shortDescription` / `name`, else the first line of the message | title |
+| `properties.security-severity` (0–10: ≥ 9 critical, ≥ 7 high, ≥ 4 medium, > 0 low), ptai's `cvss_score`; else `level` (`error` high, `warning` medium, `note` low, `none` info) | severity (yours to change) |
+| `properties.cwe_id` / `cwe`, rule tags `CWE-79` or `external/cwe/cwe-79`, a `CWE-n` rule id | CWE |
+| rule `fullDescription` + the result message (with `{0}` arguments filled in); rule `help` | description; remediation |
+| `http(s)` location URIs | targets (named after the host, address = origin) |
+| file locations with region lines, logical location and snippet | code evidence (`src/auth.c:42-44 check_login`); without a snippet the location is listed in the technical details |
+| `webRequest` / `webResponse` | HTTP evidence (raw request rebuilt from method, target, headers, body) |
+| `tool.driver.name` / `version`, `automationDetails.id` or ptai's `engagement_id` | source tool / version / run |
+| `properties.verdict` (`verified`, `candidate`), `oracle_kind`, `replay` | verdict; a line in the technical details |
+
+Skipped: results of kind `pass` / `notApplicable`, results with `baselineState: "absent"`, suppressed results,
+and results with `verdict: "refuted"`.
+
+**ptai proof capsule** (`capsule_schema_version: 1`, from `ptai demo` or pentest-ai's capsule builder; one
+capsule, a list, or `{"capsules": [...]}`): title, severity, target, `bug_class` (mapped to a CWE where
+unambiguous, e.g. `xss_reflected` → CWE-79), the receipt's verdict, oracle, replay counts and oracle result, the
+response excerpt, the receipt's request/response as HTTP evidence when present (the demo capsule has none, and
+none is invented), `replay.curl` as PoC. **The capsule itself is attached as an evidence file**, so its SHA-256
+is printed in the report and the client can re-run `ptai replay` on exactly that file. ptreport recomputes the
+capsule's `integrity_sha256` like pentest-ai does; a mismatch is reported and lowers `verified` to `candidate`.
+`refuted` capsules are skipped.
+
+**ptreport proposal JSON v1**: [above](#ptreport-proposal-json-v1).
+
+**In a retest report** (one created with *Create retest report*), a SARIF or capsule result that matches a
+finding of the report – the same CWE (or, without a CWE, a ≥ 90 % similar title) **and** the same host or source
+file – is queued as a **retest result "not fixed"** for that finding ("Still present according to pentest-ai
+(eng-7f3a) (verified)."), with the result's evidence. Other results are queued as new findings. A finding that
+is missing from the file is **never** marked fixed: absence is not proof. Use an explicit `retest` proposal (or
+the MCP tool `propose_retest_result`) for *fixed*.
+
+## Reverse engineering: code evidence, binary and firmware targets
+
+- Targets can be of type **Binary** and **Firmware** (EN/PL labels in every export).
+- **Code evidence** on a finding (finding page → *Code evidence*, `POST /api/v1/findings/<id>/code-evidence`, or a
+  `code` proposal): a title, a location (file / function / address, free text, ≤ 300), a language (C, C++,
+  Assembly, Pseudocode, Java, Python, Text), the code (≤ 200 000 characters) and a note. Add, edit and delete it
+  like HTTP evidence. It is printed in HTML, Markdown (fenced block) and PDF (a framed listing read with
+  `\VerbatimInput`, so the code is never parsed as LaTeX and breaks across pages), and travels in JSON backups,
+  duplicates and retest reports.
+- Attach the **analysed sample** (binary, firmware image) as an evidence file: ptreport computes its SHA-256 and
+  prints it in the report, so the client can check which build was reversed.
+- RE agents driving Ghidra or IDA through MCP (REA, ReAgent, GhidraMCP, ida-pro-mcp …) can call
+  `propose_code_evidence` and `propose_file` next to `propose_finding` in the same client session.
 
 ## Integration tokens and the API
 

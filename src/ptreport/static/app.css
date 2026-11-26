@@ -168,3 +168,9 @@ button.menu-item:disabled { color: var(--c-muted); cursor: not-allowed; }
 .scope-chips { display: inline-flex; gap: var(--sp-1); }
 .is-revoked td { color: var(--c-muted); }
 .code-meta { display: flex; flex-wrap: wrap; gap: var(--sp-2) var(--sp-3); align-items: center; }
+.code-meta code { overflow-wrap: anywhere; }
+.kind-label { display: inline-flex; align-items: center; gap: var(--sp-2); }
+.code-edit > summary { list-style: none; width: fit-content; }
+.code-edit > summary::-webkit-details-marker { display: none; }
+.code-edit[open] { padding: var(--sp-3); background: var(--c-surface); border: 1px solid var(--c-line); border-radius: var(--radius-lg); }
+.code-edit[open] > summary { margin-bottom: var(--sp-3); }

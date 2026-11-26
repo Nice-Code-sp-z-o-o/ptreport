@@ -17,6 +17,7 @@ from ptreport.validation import (
     IMAGE_MAX_PER_FINDING,
     validate_uploads,
     validate_attachment,
+    validate_code_evidence,
     validate_evidence,
     validate_finding,
     validate_note,
@@ -71,7 +72,7 @@ def _report(report_id: int) -> dict:
 
 def _finding_out(report: dict, f: dict) -> dict:
     out = {k: v for k, v in f.items()
-           if k not in ("evidence", "targets", "attachments", "files", "severity_manual")}
+           if k not in ("evidence", "targets", "attachments", "files", "code_evidence", "severity_manual")}
     out["display_id"] = repo.finding_display_id(report, f, repo.get_settings(get_db()))
     out["url"] = url_for("web.finding_edit", finding_id=f["id"], _external=True)
     if "targets" in f:
@@ -79,6 +80,7 @@ def _finding_out(report: dict, f: dict) -> dict:
     out["evidence_count"] = len(f.get("evidence", []))
     out["screenshot_count"] = len(f.get("attachments", []))
     out["file_count"] = len(f.get("files", []))
+    out["code_evidence_count"] = len(f.get("code_evidence", []))
     return out
 
 
@@ -167,6 +169,7 @@ def finding(finding_id: int):
     r = _report(f["report_id"])
     out = _finding_out(r, f)
     out["evidence"] = f["evidence"]
+    out["code_evidence"] = f["code_evidence"]
     return jsonify(finding=out)
 
 
@@ -203,6 +206,17 @@ def attachment_create(finding_id: int):
         return _unprocessable(errors)
     attachment_id = repo.create_attachment(get_db(), f, data)
     return jsonify(attachment=repo.get_attachment(get_db(), attachment_id)), 201
+
+
+@bp.post("/findings/<int:finding_id>/code-evidence")
+def code_evidence_create(finding_id: int):
+    """Add code evidence: {"title", "location", "language": c|cpp|asm|pseudo|java|python|text, "code", "note"}."""
+    f = _finding(finding_id)
+    data, errors = validate_code_evidence(_json_body())
+    if errors:
+        return _unprocessable(errors)
+    code_id = repo.create_code_evidence(get_db(), f, data)
+    return jsonify(code_evidence=repo.get_code_evidence(get_db(), code_id)), 201
 
 
 def _finding(finding_id: int) -> dict:

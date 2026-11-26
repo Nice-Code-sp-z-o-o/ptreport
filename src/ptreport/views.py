@@ -21,7 +21,7 @@ from flask import (
     url_for,
 )
 
-from ptreport import ai, export, ids, importers, latex, proposals, repo
+from ptreport import ai, ai_import, export, ids, importers, latex, proposals, repo
 from ptreport.cvss_service import METRIC_DEFINITIONS, CvssInvalid, score_vector
 from ptreport.cwe import catalogue_version as cwe_catalogue_version
 from ptreport.cwe import cwe_choices, cwe_name, cwe_reference
@@ -43,6 +43,7 @@ from ptreport.validation import (
     FILE_MAX_TOTAL_PER_FINDING,
     IMAGE_MAX_BYTES,
     IMAGE_MAX_PER_FINDING,
+    CODE_LANGUAGES,
     CONFIDENCE_LEVELS,
     FINDING_STATUSES,
     LANGUAGES,
@@ -51,6 +52,7 @@ from ptreport.validation import (
     TARGET_KINDS,
     TEMPLATE_FIELDS,
     download_type,
+    validate_code_evidence,
     validate_edited_image,
     validate_evidence,
     validate_attachment,
@@ -235,7 +237,8 @@ def _finding_form(report: dict, finding: dict | None, values: dict, errors: dict
                   evidence_values: dict | None = None, evidence_errors: dict | None = None,
                   attachment_values: dict | None = None, attachment_errors: dict | None = None,
                   file_values: dict | None = None, file_errors: dict | None = None,
-                  history_values: dict | None = None, history_errors: dict | None = None):
+                  history_values: dict | None = None, history_errors: dict | None = None,
+                  code_values: dict | None = None, code_errors: dict | None = None):
     return (
         render_template(
             "findings/form.html",
@@ -251,6 +254,10 @@ def _finding_form(report: dict, finding: dict | None, values: dict, errors: dict
             cwe_choices=cwe_choices(),
             cvss_defs=METRIC_DEFINITIONS,
             evidence=finding["evidence"] if finding else [],
+            code_evidence=finding["code_evidence"] if finding else [],
+            code_values=code_values or {"language": "pseudo"},
+            code_errors=code_errors or {},
+            code_languages=CODE_LANGUAGES,
             evidence_values=evidence_values or {},
             evidence_errors=evidence_errors or {},
             attachments=finding["attachments"] if finding else [],
@@ -378,6 +385,48 @@ def evidence_delete(evidence_id: int):
     repo.delete_evidence(get_db(), evidence)
     flash("HTTP evidence deleted.", "success")
     return redirect(url_for("web.finding_edit", finding_id=evidence["finding_id"], _anchor="evidence"))
+
+
+# ----------------------------------------------------------- code evidence --
+
+def _code_or_404(code_id: int) -> tuple[dict, dict, dict]:
+    item = repo.get_code_evidence(get_db(), code_id)
+    if item is None:
+        abort(404)
+    finding, report = _finding_or_404(item["finding_id"])
+    return item, finding, report
+
+
+@bp.post("/findings/<int:finding_id>/code-evidence")
+def code_evidence_new(finding_id: int):
+    finding, report = _finding_or_404(finding_id)
+    data, errors = validate_code_evidence(request.form)
+    if errors:
+        return _finding_form(report, finding, finding, {}, finding["target_ids"], 422,
+                             code_values=request.form, code_errors=errors)
+    repo.create_code_evidence(get_db(), finding, data)
+    flash("Code evidence added.", "success")
+    return redirect(url_for("web.finding_edit", finding_id=finding_id, _anchor="code-evidence"))
+
+
+@bp.post("/code-evidence/<int:code_id>/edit")
+def code_evidence_edit(code_id: int):
+    item, finding, report = _code_or_404(code_id)
+    data, errors = validate_code_evidence(request.form)
+    if errors:
+        flash("Code evidence not saved: " + "; ".join(errors.values()), "error")
+    else:
+        repo.update_code_evidence(get_db(), item, data)
+        flash("Code evidence saved.", "success")
+    return redirect(url_for("web.finding_edit", finding_id=finding["id"], _anchor=f"code-{code_id}"))
+
+
+@bp.post("/code-evidence/<int:code_id>/delete")
+def code_evidence_delete(code_id: int):
+    item, finding, _report = _code_or_404(code_id)
+    repo.delete_code_evidence(get_db(), item)
+    flash("Code evidence deleted.", "success")
+    return redirect(url_for("web.finding_edit", finding_id=finding["id"], _anchor="code-evidence"))
 
 
 # ------------------------------------------------------------- screenshots --
@@ -1044,9 +1093,46 @@ def ai_queue(report_id: int):
             groups.append({"kind": kind, "label": proposals.KIND_LABELS[kind], "entries": items})
     decided = [p for p in repo.list_proposals(get_db(), report_id) if p["status"] != "pending"][-20:]
     return render_template("reports/ai_queue.html", report=report, groups=groups, pending_count=len(pending),
+                           import_url=url_for("web.ai_results_import", report_id=report_id),
                            findings=findings, counts=repo.proposal_status_counts(get_db(), report_id),
                            decided=[{**p, "preview": proposals.preview(p, findings)} for p in reversed(decided)],
                            severities=SEVERITIES)
+
+
+def _ai_import_form(report: dict, errors: list[str], status: int = 200):
+    return render_template("reports/ai_import.html", report=report, errors=errors, formats=ai_import.FORMATS,
+                           format_labels=ai_import.LABELS), status
+
+
+@bp.route("/reports/<int:report_id>/ai-import", methods=["GET", "POST"])
+def ai_results_import(report_id: int):
+    report = _report_or_404(report_id)
+    if request.method == "GET":
+        return _ai_import_form(report, [])
+    upload = request.files.get("file")
+    data = upload.read(ai_import.MAX_BYTES + 1) if upload else b""
+    if not data:
+        return _ai_import_form(report, ["Choose a SARIF, ptai capsule or proposal JSON file."], 422)
+    fmt = request.form.get("format", "")
+    if fmt and fmt not in ai_import.FORMATS:
+        return _ai_import_form(report, ["Unknown format."], 422)
+    try:
+        prepared = ai_import.prepare(get_db(), report_id, ai_import.parse(data, fmt or None))
+        ids_ = ai_import.submit(get_db(), report_id, prepared)
+    except (ai_import.ImportError_, proposals.ProposalError) as exc:
+        return _ai_import_form(report, [str(exc)], 422)
+    if not ids_:
+        return _ai_import_form(report, ["Nothing to import: the file has no usable results."]
+                               + prepared["warnings"][:10], 422)
+    retests = sum(1 for p in prepared["plan"] if p["action"] == "retest")
+    label = ai_import.LABELS[prepared["format"]]
+    flash(f"{label}: {len(ids_)} proposal(s) queued" + (f", {retests} of them as retest results" if retests else "")
+          + ". Nothing is in the report until you accept it.", "success")
+    for warning in prepared["warnings"][:3]:
+        flash(warning, "error")
+    if len(prepared["warnings"]) > 3:
+        flash(f"... and {len(prepared['warnings']) - 3} more note(s) from reading the file.", "error")
+    return redirect(url_for("web.ai_queue", report_id=report_id))
 
 
 def _merge_target() -> int | None:

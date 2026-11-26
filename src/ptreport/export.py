@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import binascii
 import hashlib
+import hmac
 import json
 import re
 import sqlite3
@@ -18,6 +19,7 @@ from ptreport.cwe import cwe_name, cwe_url
 from ptreport.db import transaction
 from ptreport.cvss_service import rating_for_score
 from ptreport.rendering import (
+    human_size,
     history_text,
     labels_for,
     cvss_rating_label,
@@ -25,9 +27,14 @@ from ptreport.rendering import (
     TARGET_KIND_LABELS,
 )
 from ptreport.validation import (
+    FILE_MAX_PER_FINDING,
     IMAGE_MAX_PER_FINDING,
     SEVERITIES,
+    check_file_quota,
+    is_sha256,
+    is_timestamp,
     validate_attachment,
+    validate_file,
     validate_cwe_note,
     validate_history_entry,
     validate_note,
@@ -290,6 +297,15 @@ def to_markdown(ctx: dict) -> str:
                 out.extend([f"*{L['request']}:*", "", _fence(e["request"], "http"), ""])
                 if e["response"]:
                     out.extend([f"*{L['response']}:*", "", _fence(e["response"], "http"), ""])
+        if f["files"]:
+            out.extend([f"{sub} {L['attached_files']}", "",
+                        f"| {L['file_name']} | {L['file_size']} | {L['sha256']} |", "|---|---:|---|"])
+            for x in f["files"]:
+                name = _md_escape_inline(x["filename"])
+                if x["description"]:
+                    name += f"<br>*{_md_escape_inline(x['description'])}*"
+                out.append(f"| {name} | {human_size(x['size'])} | `{x['sha256']}` |")
+            out.append("")
         if f["remediation"]:
             out.extend([f"{sub} {L['remediation']}", "", f["remediation"], ""])
         if f["refs"]:
@@ -352,7 +368,16 @@ def to_markdown(ctx: dict) -> str:
     return "\n".join(out).rstrip() + "\n"
 
 
-def to_json(ctx: dict) -> dict:
+def _file_json(x: dict, blobs: dict[int, bytes] | None) -> dict:
+    out = {f: x[f] for f in repo.FILE_FIELDS}
+    if blobs is not None:
+        out["data_base64"] = base64.b64encode(blobs[x["id"]]).decode("ascii")
+    return out
+
+
+def to_json(ctx: dict, file_blobs: dict[int, bytes] | None = None) -> dict:
+    """The report as a JSON document. Files carry their bytes (base64) only when ``file_blobs`` is given;
+    without it (the content fingerprint) their SHA-256 stands for the content."""
     r = ctx["report"]
     return {
         "format": EXPORT_FORMAT,
@@ -373,6 +398,7 @@ def to_json(ctx: dict) -> dict:
                      "data_base64": base64.b64encode(a["data"]).decode("ascii")}
                     for a in fd["attachments"]
                 ],
+                "files": [_file_json(x, file_blobs) for x in fd["files"]],
             }
             for fd in ctx["findings"]
         ],
@@ -395,6 +421,46 @@ def _collect(prefix: str, errors: dict, sink: list[str]) -> None:
 
 
 MAX_IMPORT_ITEMS = 5000
+
+
+def _import_files(i: int, files_in: Any) -> tuple[list[dict], list[str]]:
+    """Evidence files of one imported finding: same validation as an upload, and the bytes must match the
+    SHA-256 (and size) recorded in the export, so a corrupted or altered file is rejected."""
+    files: list[dict] = []
+    problems: list[str] = []
+    files_in = files_in or []
+    if not isinstance(files_in, list) or len(files_in) > FILE_MAX_PER_FINDING:
+        return [], [f"finding #{i}: files must be a list of at most {FILE_MAX_PER_FINDING} files"]
+    for j, x in enumerate(files_in, 1):
+        where = f"finding #{i} file #{j}"
+        if not isinstance(x, dict) or not isinstance(x.get("data_base64"), str):
+            problems.append(f"{where}: must be an object with data_base64")
+            continue
+        if not is_sha256(x.get("sha256")):
+            problems.append(f"{where}: sha256 must be 64 lowercase hex characters")
+            continue
+        try:
+            raw = base64.b64decode(x["data_base64"], validate=True)
+        except (binascii.Error, ValueError):
+            problems.append(f"{where}: data_base64 is not valid base64")
+            continue
+        clean, errs = validate_file(x.get("filename"), x.get("description", ""), raw)
+        if errs:
+            _collect(where, errs, problems)
+            continue
+        if not hmac.compare_digest(clean["sha256"], x["sha256"]):
+            problems.append(f"{where} ({clean['filename']}): SHA-256 does not match the file content")
+            continue
+        if "size" in x and x["size"] != clean["size"]:
+            problems.append(f"{where} ({clean['filename']}): size does not match the file content")
+            continue
+        if is_timestamp(x.get("uploaded_at")):
+            clean["uploaded_at"] = x["uploaded_at"]
+        files.append(clean)
+    quota = check_file_quota(0, 0, [x["size"] for x in files])
+    if quota:
+        problems.append(f"finding #{i}: {quota}")
+    return files, problems
 
 
 def import_json(conn: sqlite3.Connection, payload: Any) -> int:
@@ -428,7 +494,7 @@ def import_json(conn: sqlite3.Connection, payload: Any) -> int:
         targets.append((ref, clean))
     known_refs = {ref for ref, _ in targets if ref is not None}
 
-    findings: list[tuple[dict, list, list[dict], list[dict], list[dict]]] = []
+    findings: list[tuple[dict, list, list[dict], list[dict], list[dict], list[dict]]] = []
     seen_external_ids: set[str] = set()
     for i, f in enumerate(findings_in, 1):
         if not isinstance(f, dict):
@@ -475,6 +541,8 @@ def import_json(conn: sqlite3.Connection, payload: Any) -> int:
             att_clean, att_errs = validate_attachment(a.get("caption", ""), raw)
             _collect(f"finding #{i} screenshot #{j}", att_errs, problems)
             attachments.append(att_clean)
+        files, file_problems = _import_files(i, f.get("files"))
+        problems.extend(file_problems)
         history = []
         hist_in = f.get("history") or []
         if not isinstance(hist_in, list) or len(hist_in) > MAX_IMPORT_ITEMS:
@@ -487,7 +555,7 @@ def import_json(conn: sqlite3.Connection, payload: Any) -> int:
             h_clean, h_errs = validate_history_entry(h)
             _collect(f"finding #{i} history #{j}", h_errs, problems)
             history.append(h_clean)
-        findings.append((clean, refs, evidence, attachments, history))
+        findings.append((clean, refs, evidence, attachments, files, history))
 
     versions = []
     versions_in = payload.get("versions") or []
@@ -553,7 +621,7 @@ def import_json(conn: sqlite3.Connection, payload: Any) -> int:
             new_id = repo.create_target(conn, report_id, data)
             if ref is not None:
                 ref_map[ref] = new_id
-        for clean, refs, evidence, attachments, history in findings:
+        for clean, refs, evidence, attachments, files, history in findings:
             clean["target_ids"] = sorted({ref_map[r] for r in refs})
             finding_id = repo.create_finding(conn, report_id, clean)
             finding = {"id": finding_id, "report_id": report_id}
@@ -561,6 +629,8 @@ def import_json(conn: sqlite3.Connection, payload: Any) -> int:
                 repo.create_evidence(conn, finding, ev)
             for att in attachments:
                 repo.create_attachment(conn, finding, att)
+            for item in files:
+                repo.create_file(conn, finding, item)
             for entry in history:
                 repo.create_history_entry(conn, finding, entry)
         for ver in versions:

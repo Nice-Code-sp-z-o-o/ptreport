@@ -5,10 +5,11 @@
 %#   \VAR{value}          prints a value; it is ALWAYS escaped for LaTeX, so report content is safe
 %#   \BLOCK{if ...}       statements: if / for / set ... closed with \BLOCK{endif}, \BLOCK{endfor}
 %#   lines starting with %# are template comments (removed from the output)
-%# Filters: richtext, verbatim, verbatim_file, url, url_cwe, reference_list, image, asset, score,
+%# Filters: richtext, verbatim, verbatim_file, url, url_cwe, reference_list, image, asset, score, breakable, filesize,
 %#   cvss_rating_key, cvss_rating_label, vector_strip, cwe_name, tex.
 %# Data: report, brand (color, logo), versions, targets, findings, counts, severities, L (labels),
-%#   lang, cvss_header, show_finding_history, generated_at.
+%#   lang, cvss_header, show_finding_history, generated_at. Each finding has files (filename, description,
+%#   size, sha256, mime, uploaded_at).
 %#
 %# Download it from Settings -> PDF template, edit, upload it back. Start with the EDIT HERE block.
 %# =====================================================================================================
@@ -412,6 +413,20 @@ CVSS \VAR{f.cvss_version} & \ptCvss{\VAR{f|cvss_rating_key}}{\VAR{f.cvss_score|s
 \ptHttp{\VAR{L.response}}{\VAR{e.response|verbatim_file('response')}}
 \BLOCK{endif}
 \BLOCK{endfor}
+\BLOCK{endif}
+
+%# Evidence files: name, size and SHA-256 (in two halves, so it always fits its column) for integrity checks.
+\BLOCK{if f.files}
+\ptBlockTitle{\VAR{L.attached_files}}
+\rowcolors{2}{soft}{white}
+\begin{longtable}{@{}W{.44}>{\raggedleft\arraybackslash}W{.12}W{.44}@{}}
+\rowcolor{brand}\ptHead{\VAR{L.file_name}} & \ptHead{\VAR{L.file_size}} & \ptHead{\VAR{L.sha256}} \\
+\endhead
+\BLOCK{for x in f.files}
+\raggedright\small \VAR{x.filename|breakable}\BLOCK{if x.description}\newline{\footnotesize\color{muted}\VAR{x.description}}\BLOCK{endif} & \small \VAR{x.size|filesize} & \footnotesize\texttt{\VAR{x.sha256[:32]}}\newline\texttt{\VAR{x.sha256[32:]}} \\
+\BLOCK{endfor}
+\end{longtable}
+\rowcolors{1}{}{}
 \BLOCK{endif}
 
 \BLOCK{if f.remediation}

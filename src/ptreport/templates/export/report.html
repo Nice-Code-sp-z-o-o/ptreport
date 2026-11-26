@@ -158,7 +158,7 @@
         <h5>{{ L.attached_files }}</h5>
         <table class="tbl files">
           <thead><tr><th>{{ L.file_name }}</th><th class="num">{{ L.file_size }}</th><th>{{ L.sha256 }}</th></tr></thead>
-          <tbody>{% for x in f.files %}<tr><td class="break">{{ x.filename }}{% if x.description %}<br><span class="small muted">{{ x.description }}</span>{% endif %}</td><td class="num nowrap">{{ x.size|filesize }}</td><td class="mono small break sha">{{ x.sha256 }}</td></tr>{% endfor %}</tbody>
+          <tbody>{% for x in f.files %}<tr><td class="name">{{ x.filename }}{% if x.description %}<br><span class="small muted">{{ x.description }}</span>{% endif %}</td><td class="num nowrap">{{ x.size|filesize }}</td><td class="mono small sha">{{ x.sha256[:32] }}<wbr>{{ x.sha256[32:] }}</td></tr>{% endfor %}</tbody>
         </table>
       {% endif %}
       {% if f.remediation %}<h5>{{ L.remediation }}</h5><div class="rt-block">{{ f.remediation|richtext }}</div>{% endif %}

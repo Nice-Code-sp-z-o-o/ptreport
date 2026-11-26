@@ -416,17 +416,21 @@ CVSS \VAR{f.cvss_version} & \ptCvss{\VAR{f|cvss_rating_key}}{\VAR{f.cvss_score|s
 \BLOCK{endif}
 
 %# Evidence files: name, size and SHA-256 (in two halves, so it always fits its column) for integrity checks.
+%# One fixed-width tabular per row, not a longtable: a page can break between any two rows. (A longtable after a
+%# \ptBlockTitle on the same page can make TeX break at that title's \needspace and repeat the table header there.)
+%# \leavevmode: a \color at the very start of a p-cell would otherwise make the header row taller.
 \BLOCK{if f.files}
 \ptBlockTitle{\VAR{L.attached_files}}
-\rowcolors{2}{soft}{white}
-\begin{longtable}{@{}W{.44}>{\raggedleft\arraybackslash}W{.12}W{.44}@{}}
-\rowcolor{brand}\ptHead{\VAR{L.file_name}} & \ptHead{\VAR{L.file_size}} & \ptHead{\VAR{L.sha256}} \\
-\endhead
+\begingroup\centering\setlength{\parskip}{0pt}
+\begin{tabular}{@{}W{.44}>{\raggedleft\arraybackslash}W{.12}W{.44}@{}}
+\rowcolor{brand}\leavevmode\ptHead{\VAR{L.file_name}} & \leavevmode\ptHead{\VAR{L.file_size}} & \leavevmode\ptHead{\VAR{L.sha256}} \\
+\end{tabular}\par\nopagebreak
 \BLOCK{for x in f.files}
-\raggedright\small \VAR{x.filename|breakable}\BLOCK{if x.description}\newline{\footnotesize\color{muted}\VAR{x.description}}\BLOCK{endif} & \small \VAR{x.size|filesize} & \footnotesize\texttt{\VAR{x.sha256[:32]}}\newline\texttt{\VAR{x.sha256[32:]}} \\
+\nointerlineskip\begin{tabular}{@{}W{.44}>{\raggedleft\arraybackslash}W{.12}W{.44}@{}}
+\BLOCK{if loop.index is even}\rowcolor{soft}\BLOCK{endif}\raggedright\small \VAR{x.filename|breakable}\BLOCK{if x.description}\newline{\footnotesize\color{muted}\VAR{x.description}}\BLOCK{endif} & \small \VAR{x.size|filesize} & \footnotesize\texttt{\VAR{x.sha256[:32]}}\newline\texttt{\VAR{x.sha256[32:]}} \\
+\end{tabular}\par
 \BLOCK{endfor}
-\end{longtable}
-\rowcolors{1}{}{}
+\par\endgroup
 \BLOCK{endif}
 
 \BLOCK{if f.remediation}

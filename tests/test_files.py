@@ -55,7 +55,7 @@ def test_upload_several_files_with_server_side_hash(client, csrf, finding):
     assert f'title="SHA-256: {files[0]["sha256"]}"' in page            # ... full one in the title
     assert f'data-copy-text="{files[0]["sha256"]}"' in page
     assert "#i-file-capture" in page and "#i-file-text" in page
-    assert "1.0 KB" in page
+    assert "1 KB" in page
 
 
 def test_client_content_type_is_ignored(client, csrf, finding):
@@ -223,12 +223,12 @@ def test_exports_list_attached_files(client, csrf, make_report, make_finding):
     sha = hashlib.sha256(PCAP).hexdigest()
 
     html = client.get(f"/reports/{report_id}/export/html").get_data(as_text=True)
-    assert "Załączone pliki" in html and sha in html and "1.0 KB" in html
+    assert "Załączone pliki" in html and f"{sha[:32]}<wbr>{sha[32:]}" in html and "1 KB" in html
     assert "capture_&amp;__b_.pcap" in html and "Ruch &lt;i&gt;logowania&lt;/i&gt;" in html
 
     md = client.get(f"/reports/{report_id}/export/md").get_data(as_text=True)
     assert "#### Załączone pliki" in md
-    assert f"| capture\\_&\\_\\_b\\_.pcap<br>*Ruch \\<i\\>logowania\\</i\\>* | 1.0 KB | `{sha}` |" in md
+    assert f"| capture\\_&\\_\\_b\\_.pcap<br>*Ruch \\<i\\>logowania\\</i\\>* | 1 KB | `{sha}` |" in md
 
     conn = db(client)
     ctx = export.build_context(conn, report_id, inline_images=True)
@@ -245,6 +245,13 @@ def test_no_files_no_section(client, csrf, make_report, make_finding):
     make_finding(report_id)
     assert "Attached files" not in client.get(f"/reports/{report_id}/export/html").get_data(as_text=True)
     assert "Attached files" not in client.get(f"/reports/{report_id}/export/md").get_data(as_text=True)
+
+
+@pytest.mark.parametrize("size, text", [(0, "0 B"), (1023, "1023 B"), (1024, "1 KB"), (1536, "1.5 KB"),
+                                        (25 * 1024 * 1024, "25 MB"), (3 * 1024 ** 3, "3 GB"), (None, "")])
+def test_human_size(size, text):
+    from ptreport.rendering import human_size
+    assert human_size(size) == text
 
 
 def test_breakable_filter_escapes_every_chunk():

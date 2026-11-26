@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-import io
 from datetime import date
 import json
 import re
-import zipfile
 
 from flask import (
     Blueprint,
@@ -616,37 +614,18 @@ def report_preview(report_id: int):
 def report_export(report_id: int, fmt: str, inline: bool = False):
     if fmt not in ("html", "md", "json", "pdf", "tex"):
         abort(404)
-    ctx = export.build_context(get_db(), report_id, inline_images=True)
-    if ctx is None:
+    try:
+        rendered = export.render_download(get_db(), report_id, fmt)
+    except latex.LatexError as exc:
+        current_app.logger.warning("PDF export of report %s failed: %s", report_id, exc)
+        return render_template("export/pdf_error.html", report=_report_or_404(report_id), error=str(exc),
+                               log=exc.log), 500
+    if rendered is None:
         abort(404)
-    title = ctx["report"]["title"]
-    if fmt == "html":
-        css = current_app.open_resource("static/report.css").read().decode("utf-8")
-        body = render_template("export/report.html", inline_css=css, preview=False, **ctx)
-        mimetype, ext = "text/html", "html"
-    elif fmt == "md":
-        body, mimetype, ext = export.to_markdown(ctx), "text/markdown", "md"
-    elif fmt == "json":
-        doc = export.to_json(ctx)
-        # working notes travel with the backup, but are not report content (not in the fingerprint)
-        doc["notes"] = [{f: n[f] for f in repo.NOTE_FIELDS} for n in reversed(repo.list_notes(get_db(), report_id))]
-        body = json.dumps(doc, ensure_ascii=False, indent=2)
-        mimetype, ext = "application/json", "json"
-    else:
-        try:
-            source, files = latex.render(ctx, repo.get_latex_template(get_db()))
-            if fmt == "pdf":
-                pdf = latex.compile_pdf(source, files, volatile=ctx["generated_at"])
-                body, mimetype, ext = pdf, "application/pdf", "pdf"
-            else:
-                body, mimetype, ext = _tex_zip(source, files), "application/zip", "zip"
-        except latex.LatexError as exc:
-            current_app.logger.warning("PDF export of report %s failed: %s", report_id, exc)
-            return render_template("export/pdf_error.html", report=ctx["report"], error=str(exc),
-                                   log=exc.log), 500
+    body, mimetype, filename = rendered
     response = Response(body, mimetype=mimetype)
     disposition = "inline" if inline else "attachment"
-    response.headers["Content-Disposition"] = f'{disposition}; filename="{export.safe_filename(title, ext)}"'
+    response.headers["Content-Disposition"] = f'{disposition}; filename="{filename}"'
     if fmt == "pdf":
         # the browser's own PDF viewer renders it; the HTML page policy would block that viewer
         response.headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'self'"
@@ -656,16 +635,6 @@ def report_export(report_id: int, fmt: str, inline: bool = False):
             "default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'"
         )
     return response
-
-
-def _tex_zip(source: str, files: dict[str, bytes]) -> bytes:
-    buffer = io.BytesIO()
-    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
-        archive.writestr("report.tex", source)
-        for name, data in files.items():
-            archive.writestr(name, data)
-        archive.writestr("README.txt", "Compile with: tectonic report.tex  (or: xelatex report.tex, twice)\n")
-    return buffer.getvalue()
 
 
 @bp.route("/import", methods=["GET", "POST"])
@@ -1038,49 +1007,12 @@ def report_duplicate(report_id: int):
 
 # ---------------------------------------------------------- scanner import --
 
-SCANNER_LABELS = {"burp": "Burp Suite (XML)", "nessus": "Nessus (.nessus)", "nmap": "Nmap (XML, targets only)",
-                  "zap": "OWASP ZAP (XML)", "openvas": "OpenVAS / Greenbone (XML)"}
-MAX_IMPORTED_FINDINGS = 2000
-MAX_IMPORTED_TARGETS = 5000
+SCANNER_LABELS = importers.LABELS
 
 
 def _scan_form(report: dict, errors: list[str], status: int = 200):
     return render_template("reports/scan_import.html", report=report, errors=errors, formats=importers.FORMATS,
                            format_labels=SCANNER_LABELS), status
-
-
-def _clean_scan(parsed: dict) -> dict:
-    """Run the importer output through the same validators as manual input; drop what does not pass."""
-    warnings = list(parsed.get("warnings", []))
-    findings = []
-    for f in parsed["findings"][:MAX_IMPORTED_FINDINGS]:
-        clean, errors = validate_finding({**f, "status": "open"}, target_ids_raw=[])
-        if errors:
-            warnings.append(f"Skipped \"{f.get('title', '')[:80]}\": " + "; ".join(errors.values()))
-            continue
-        evidence = []
-        for e in f.get("evidence", []):
-            ev, ev_errors = validate_evidence({**e, "source": "import"})
-            if not ev_errors:
-                evidence.append(ev)
-        clean.pop("target_ids", None)
-        findings.append({**clean, "key": f["key"], "target_keys": list(f.get("target_keys", [])),
-                         "evidence": evidence})
-    if len(parsed["findings"]) > MAX_IMPORTED_FINDINGS:
-        warnings.append(f"Only the first {MAX_IMPORTED_FINDINGS} findings were read.")
-    targets = []
-    for t in parsed["targets"][:MAX_IMPORTED_TARGETS]:
-        clean, errors = validate_target(t)
-        if errors:
-            warnings.append(f"Skipped target \"{t.get('name', '')[:80]}\": " + "; ".join(errors.values()))
-            continue
-        targets.append({**clean, "key": t["key"]})
-    if len(parsed["targets"]) > MAX_IMPORTED_TARGETS:
-        warnings.append(f"Only the first {MAX_IMPORTED_TARGETS} targets were read.")
-    known = {t["key"] for t in targets}
-    for f in findings:
-        f["target_keys"] = [k for k in f["target_keys"] if k in known]
-    return {"format": parsed["format"], "targets": targets, "findings": findings, "warnings": warnings}
 
 
 @bp.route("/reports/<int:report_id>/scan-import", methods=["GET", "POST"])
@@ -1101,7 +1033,7 @@ def scan_import(report_id: int):
         parsed = importers.parse(data, fmt or None, include_info=request.form.get("include_info") == "1")
     except importers.ImportError_ as exc:
         return _scan_form(report, [str(exc)], 422)
-    cleaned = _clean_scan(parsed)
+    cleaned = importers.clean(parsed)
     if not cleaned["targets"] and not cleaned["findings"]:
         return _scan_form(report, ["Nothing to import: the file has no hosts or issues"
                                    + (" (informational issues were left out)" if fmt != "nmap" else "") + "."]

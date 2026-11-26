@@ -237,6 +237,28 @@ def validate_settings(data: Mapping[str, Any]) -> tuple[dict, dict]:
     return v.clean, v.errors
 
 
+def validate_ai_settings(data: Mapping[str, Any]) -> tuple[dict, dict]:
+    """Ollama assistant settings. The URL may only point at this machine (SSRF guard)."""
+    from ptreport import ai
+
+    v = Validator(data)
+    enabled = data.get("enabled") in ("1", "on", "true", True)
+    v.clean["enabled"] = enabled
+    url = ai.normalise_url(v.text("url", required=True, max_len=ai.MAX_URL_LEN, label="Ollama URL"))
+    if "url" not in v.errors:
+        problem = ai.url_problem(url)
+        if problem:
+            v.errors["url"] = problem
+        v.clean["url"] = url
+    model = v.text("model", max_len=ai.MAX_MODEL_LEN, label="Model")
+    if "model" not in v.errors:
+        if model or enabled:
+            problem = ai.model_problem(model)
+            if problem:
+                v.errors["model"] = problem if model else "Choose a model to enable the assistant."
+    return v.clean, v.errors
+
+
 def validate_target(data: Mapping[str, Any]) -> tuple[dict, dict]:
     v = Validator(data)
     v.text("name", required=True, max_len=200, label="Target name")

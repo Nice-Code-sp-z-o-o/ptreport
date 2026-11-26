@@ -30,6 +30,8 @@ one SQLite file, no accounts, no cloud.
 - **Burp Suite extension**: right-click a request or response and send it to a new or existing finding, choosing
   the title, CWE, severity and target in a dialog
 - **JSON API** with bearer-token auth (used by the Burp extension)
+- **AI writing assistant** (optional, off by default): draft, improve, translate PL↔EN or shorten finding texts with
+  a **local Ollama** model; only loopback addresses are accepted, so nothing leaves the machine
 - **Command line**: list, create and show reports, import scanner files and JSON backups, export to
   PDF/HTML/Markdown/JSON from a shell or script (`ptreport report list`, `ptreport export 3 --format pdf`)
 
@@ -138,6 +140,25 @@ never inject LaTeX commands, also in custom templates. Raw HTTP messages and cod
 files and loaded with `\VerbatimInput`, so they are never parsed as TeX. Templates run in Jinja's sandbox,
 and LaTeX always runs without shell escape. In **Settings → PDF template** you can download the default,
 upload your own (it is test-rendered before saving) and switch back to the default.
+
+## AI writing assistant (local Ollama)
+
+Optional and **off by default**. It talks only to an [Ollama](https://ollama.com) server on this machine.
+
+1. Install Ollama and a small model, e.g. `ollama pull qwen2.5:3b` (3–8B models are fine on a laptop GPU).
+2. **Settings → AI assistant**: tick *Enable*, keep the URL `http://127.0.0.1:11434`, click **Load models**, pick
+   one, click **Test connection**, then **Save**.
+3. On a finding, an **Assist** menu appears next to Description, Impact, Technical details and Remediation:
+   **Draft from title/CWE**, **Improve wording**, **Translate to English / Polish** (the report's language is
+   marked) and **Shorten**.
+4. The suggestion opens in a dialog as editable plain text. **Replace field**, **Insert** (at the cursor, or at the
+   end), **Copy** or **Discard**. Nothing changes until you click, and nothing is saved until you save the finding.
+
+Safety: the URL must be `http(s)` on `127.0.0.1`, `::1` or `localhost` (checked when saving and again on every
+request; redirects are not followed and proxy variables are ignored). Prompts contain only the fields of the
+finding you are editing (title, CWE, severity, the four texts above), never other reports. Model output is treated
+as untrusted text and never rendered as HTML. Requests are rate limited, limited to 20,000 characters per field,
+and time out after 120 s. All prompts are in `src/ptreport/ai.py`.
 
 ## Command line
 

@@ -73,7 +73,7 @@ def build_context(conn: sqlite3.Connection, report_id: int, inline_images: bool 
             att["data"] = data
             att["src"] = f"data:{mime};base64,{base64.b64encode(data).decode('ascii')}"
         else:
-            att["src"] = url_for("web.attachment_file", attachment_id=att["id"])
+            att["src"] = url_for("web.attachment_file", attachment_id=att["id"], v=att["sha256"][:12])
     lang = report["language"] if report["language"] in REPORT_LABELS else "en"
     labels = labels_for(lang, repo.get_label_overrides(conn).get(lang))
     L = labels["L"]
@@ -190,6 +190,7 @@ def render_download(conn: sqlite3.Connection, report_id: int, fmt: str) -> tuple
     elif fmt == "md":
         body = to_markdown(ctx).encode("utf-8")
     elif fmt == "json":
+        add_originals(conn, ctx)  # backups keep the untouched originals of edited screenshots
         file_ids = [x["id"] for f in ctx["findings"] for x in f["files"]]
         doc = to_json(ctx, file_blobs=repo.file_data(conn, file_ids))
         # working notes travel with the backup, but are not report content (not in the fingerprint)
@@ -416,6 +417,41 @@ def to_markdown(ctx: dict) -> str:
     return "\n".join(out).rstrip() + "\n"
 
 
+def add_originals(conn: sqlite3.Connection, ctx: dict) -> None:
+    """Attach the untouched originals of edited screenshots, so the JSON backup can restore them later."""
+    attachments = [a for f in ctx["findings"] for a in f["attachments"] if a["edited"]]
+    originals = repo.attachment_originals(conn, [a["id"] for a in attachments])
+    for a in attachments:
+        if a["id"] in originals:
+            a["original"] = originals[a["id"]]
+
+
+def _attachment_json(a: dict) -> dict:
+    out = {"caption": a["caption"], "mime": a["mime"], "data_base64": base64.b64encode(a["data"]).decode("ascii")}
+    if a.get("original"):
+        mime, data = a["original"]
+        out["original"] = {"mime": mime, "data_base64": base64.b64encode(data).decode("ascii"),
+                           "edited_at": a["edited_at"]}
+    return out
+
+
+def _import_original(original: Any) -> tuple[dict, dict]:
+    """The untouched original of an edited screenshot in a JSON backup (same checks as any upload)."""
+    if not isinstance(original, dict) or not isinstance(original.get("data_base64"), str):
+        return {}, {"file": "must be an object with data_base64"}
+    try:
+        raw = base64.b64decode(original["data_base64"], validate=True)
+    except (binascii.Error, ValueError):
+        return {}, {"file": "data_base64 is not valid base64"}
+    clean, errors = validate_attachment("", raw)
+    if errors:
+        return {}, errors
+    edited_at = original.get("edited_at")
+    if not (isinstance(edited_at, str) and re.fullmatch(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}", edited_at)):
+        edited_at = None
+    return {"original_mime": clean["mime"], "original_data": clean["data"], "edited_at": edited_at}, {}
+
+
 def _file_json(x: dict, blobs: dict[int, bytes] | None) -> dict:
     out = {f: x[f] for f in repo.FILE_FIELDS}
     if blobs is not None:
@@ -441,11 +477,7 @@ def to_json(ctx: dict, file_blobs: dict[int, bytes] | None = None) -> dict:
                 "targets": [t["id"] for t in fd["targets"]],
                 "evidence": [{f: e[f] for f in repo.EVIDENCE_FIELDS} for e in fd["evidence"]],
                 "history": [{f: h[f] for f in repo.HISTORY_FIELDS} for h in fd["history"]],
-                "attachments": [
-                    {"caption": a["caption"], "mime": a["mime"],
-                     "data_base64": base64.b64encode(a["data"]).decode("ascii")}
-                    for a in fd["attachments"]
-                ],
+                "attachments": [_attachment_json(a) for a in fd["attachments"]],
                 "files": [_file_json(x, file_blobs) for x in fd["files"]],
             }
             for fd in ctx["findings"]
@@ -588,6 +620,11 @@ def import_json(conn: sqlite3.Connection, payload: Any) -> int:
                 continue
             att_clean, att_errs = validate_attachment(a.get("caption", ""), raw)
             _collect(f"finding #{i} screenshot #{j}", att_errs, problems)
+            original = a.get("original")
+            if original is not None:
+                orig_clean, orig_errs = _import_original(original)
+                _collect(f"finding #{i} screenshot #{j} original", orig_errs, problems)
+                att_clean.update(orig_clean)
             attachments.append(att_clean)
         files, file_problems = _import_files(i, f.get("files"))
         problems.extend(file_problems)

@@ -30,7 +30,8 @@ FINDING_FIELDS = (
     "external_id", "confidence", "retest_result", "retest_date", "retest_notes",
 )
 EVIDENCE_FIELDS = ("title", "request", "response", "source")
-ATTACHMENT_META = "id, finding_id, position, caption, mime, sha256, length(data) AS size, created_at"
+ATTACHMENT_META = ("id, finding_id, position, caption, mime, sha256, length(data) AS size, created_at, "
+                   "original_data IS NOT NULL AS edited, edited_at")
 FILE_META = "id, finding_id, position, filename, description, mime, size, sha256, uploaded_at"
 FILE_FIELDS = ("filename", "description", "mime", "size", "sha256", "uploaded_at")
 
@@ -484,7 +485,7 @@ def list_attachments(conn: sqlite3.Connection, finding_id: int) -> list[dict]:
 
 
 def get_attachment(conn: sqlite3.Connection, attachment_id: int, with_data: bool = False) -> dict | None:
-    columns = "*" if with_data else ATTACHMENT_META
+    columns = ATTACHMENT_META + (", data, original_mime, original_data, original_sha256" if with_data else "")
     return _row(conn.execute(f"SELECT {columns} FROM attachments WHERE id = ?", (attachment_id,)).fetchone())
 
 
@@ -507,14 +508,74 @@ def create_attachment(conn: sqlite3.Connection, finding: dict, data: dict) -> in
         position = conn.execute(
             "SELECT COALESCE(MAX(position), 0) + 1 FROM attachments WHERE finding_id = ?", (finding["id"],)
         ).fetchone()[0]
+        original = data.get("original_data")
         cur = conn.execute(
-            "INSERT INTO attachments (finding_id, position, caption, mime, data, sha256) VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO attachments (finding_id, position, caption, mime, data, sha256, original_mime, original_data,"
+            " original_sha256, edited_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (finding["id"], position, data.get("caption", ""), data["mime"], data["data"],
-             hashlib.sha256(data["data"]).hexdigest()),
+             hashlib.sha256(data["data"]).hexdigest(),
+             data.get("original_mime") if original else None, original,
+             hashlib.sha256(original).hexdigest() if original else None,
+             (data.get("edited_at") or _sql_now(conn)) if original else None),
         )
         conn.execute("UPDATE findings SET updated_at = datetime('now') WHERE id = ?", (finding["id"],))
         touch_report(conn, finding["report_id"])
     return int(cur.lastrowid)
+
+
+def _sql_now(conn: sqlite3.Connection) -> str:
+    return conn.execute("SELECT datetime('now')").fetchone()[0]
+
+
+def attachment_originals(conn: sqlite3.Connection, attachment_ids: list[int]) -> dict[int, tuple[str, bytes]]:
+    """Untouched originals of edited screenshots (attachments that were never edited are left out)."""
+    if not attachment_ids:
+        return {}
+    rows = conn.execute(
+        f"SELECT id, original_mime, original_data FROM attachments WHERE original_data IS NOT NULL "
+        f"AND id IN ({_placeholders(len(attachment_ids))})",
+        list(attachment_ids),
+    )
+    return {r["id"]: (r["original_mime"], r["original_data"]) for r in rows}
+
+
+def save_edited_attachment(conn: sqlite3.Connection, attachment: dict, mime: str, data: bytes) -> None:
+    """Replace a screenshot's image with an edited version.
+
+    The first edit moves the current image into the ``original_*`` columns; later edits only replace the
+    edited image, so the original is always the image as it was uploaded."""
+    with transaction(conn):
+        conn.execute(
+            """UPDATE attachments SET
+                 original_mime   = COALESCE(original_mime, mime),
+                 original_sha256 = CASE WHEN original_data IS NULL THEN sha256 ELSE original_sha256 END,
+                 original_data   = COALESCE(original_data, data),
+                 mime = ?, data = ?, sha256 = ?, edited_at = datetime('now')
+               WHERE id = ?""",
+            (mime, data, hashlib.sha256(data).hexdigest(), attachment["id"]),
+        )
+        _touch_attachment_finding(conn, attachment["finding_id"])
+
+
+def restore_attachment_original(conn: sqlite3.Connection, attachment: dict) -> bool:
+    """Bring back the original image and drop the edited one. False when the screenshot was never edited."""
+    with transaction(conn):
+        cur = conn.execute(
+            """UPDATE attachments SET mime = original_mime, data = original_data, sha256 = original_sha256,
+                 original_mime = NULL, original_data = NULL, original_sha256 = NULL, edited_at = NULL
+               WHERE id = ? AND original_data IS NOT NULL""",
+            (attachment["id"],),
+        )
+        if cur.rowcount:
+            _touch_attachment_finding(conn, attachment["finding_id"])
+    return bool(cur.rowcount)
+
+
+def _touch_attachment_finding(conn: sqlite3.Connection, finding_id: int) -> None:
+    conn.execute("UPDATE findings SET updated_at = datetime('now') WHERE id = ?", (finding_id,))
+    row = conn.execute("SELECT report_id FROM findings WHERE id = ?", (finding_id,)).fetchone()
+    if row:
+        touch_report(conn, row["report_id"])
 
 
 def update_attachment_caption(conn: sqlite3.Connection, attachment: dict, caption: str) -> None:
@@ -930,10 +991,16 @@ def clone_report(conn: sqlite3.Connection, report_id: int, retest: bool) -> int:
             new_finding = {"id": fid, "report_id": new_id}
             for e in f["evidence"]:
                 create_evidence(conn, new_finding, {k: e[k] for k in EVIDENCE_FIELDS})
-            blobs = attachment_data(conn, [a["id"] for a in f["attachments"]])
+            att_ids = [a["id"] for a in f["attachments"]]
+            blobs = attachment_data(conn, att_ids)
+            originals = attachment_originals(conn, att_ids)
             for a in f["attachments"]:
                 mime, blob = blobs[a["id"]]
-                create_attachment(conn, new_finding, {"caption": a["caption"], "mime": mime, "data": blob})
+                copy = {"caption": a["caption"], "mime": mime, "data": blob}
+                if a["id"] in originals:
+                    copy["original_mime"], copy["original_data"] = originals[a["id"]]
+                    copy["edited_at"] = a["edited_at"]
+                create_attachment(conn, new_finding, copy)
             file_blobs = file_data(conn, [x["id"] for x in f["files"]])
             for x in f["files"]:
                 create_file(conn, new_finding, {**{k: x[k] for k in FILE_FIELDS}, "data": file_blobs[x["id"]]})

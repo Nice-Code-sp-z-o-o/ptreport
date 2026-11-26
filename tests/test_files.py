@@ -422,3 +422,23 @@ def test_api_upload_validation_and_auth(client, finding, api_headers, monkeypatc
                        data={"file": (BytesIO(b"123456"), "a.log")})
     assert resp.status_code == 422
     assert client.get("/api/v1/findings/9999/files", headers=api_headers).status_code == 404
+
+
+def test_migration_14_creates_files_table_after_placeholder_12(tmp_path):
+    """A database from the screenshot-editor build ran an empty placeholder as migration 12 and is at 13
+    without the files table; migration 14 must create it (and be a no-op where 12 already did)."""
+    from ptreport.db import MIGRATIONS, connect, migrate
+
+    conn = connect(tmp_path / "editor-build.db")
+    for version, script in enumerate(MIGRATIONS[:13], start=1):
+        script = "" if version == 12 else script
+        conn.executescript("BEGIN;\n" + script + f"\nPRAGMA user_version = {version};\nCOMMIT;")
+    assert conn.execute("SELECT name FROM sqlite_master WHERE name = 'finding_files'").fetchone() is None
+    assert migrate(conn) == len(MIGRATIONS) == 14
+    assert conn.execute("SELECT name FROM sqlite_master WHERE name = 'finding_files'").fetchone() is not None
+    assert conn.execute("SELECT name FROM sqlite_master WHERE name = 'idx_finding_files_finding'").fetchone()
+    conn.close()
+
+    fresh = connect(tmp_path / "fresh.db")
+    assert migrate(fresh) == 14
+    fresh.close()

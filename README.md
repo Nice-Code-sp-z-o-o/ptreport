@@ -8,7 +8,7 @@ one SQLite file, no accounts, no cloud.
 
 ![ptreport: CVSS calculator and screenshot editor](docs/media/ptreport-demo.gif)
 
-[![Watch the 70-second demo video](docs/media/demo-poster.png)](docs/media/ptreport-demo.mp4)
+[![Watch the 2-minute demo video](docs/media/demo-poster.png)](docs/media/ptreport-demo.mp4)
 
 *All data in the screenshots and the video is made up (fictional "Acme" client, `.example` domains).*
 
@@ -253,6 +253,8 @@ choose **Send to ptreport**. A dialog asks for:
 - **New finding** (title, **CWE** with search over the whole MITRE catalogue, severity, target) or **Add to an
   existing finding**,
 - the evidence title and whether to include the response.
+
+![Sending a request from Burp to ptreport](docs/media/burp-send-to-ptreport.gif)
 
 | | |
 |---|---|

@@ -83,8 +83,14 @@
     ctx.restore();
   }
 
-  // Each block becomes one flat average colour, written into the pixels themselves: nothing of the
-  // original detail survives in the saved PNG (unlike a CSS/canvas blur, which can be partly reversed).
+  // Each block becomes one flat colour, written into the pixels themselves: nothing of the original detail
+  // survives in the saved PNG (unlike a CSS/canvas blur, which can be partly reversed). The block average is
+  // also rounded to a coarse step: exact averages of large-enough blocks are what de-pixelation tools
+  // (e.g. Depix) match against rendered candidate text, so they must not be kept.
+  var PIXELATE_STEP = 48;
+  function quantize(v) {
+    return Math.min(255, Math.round(v / PIXELATE_STEP) * PIXELATE_STEP);
+  }
   function pixelate(ctx, op) {
     var img = ctx.getImageData(op.x, op.y, op.w, op.h);
     var d = img.data, w = op.w, h = op.h, b = op.block;
@@ -97,7 +103,7 @@
             r += d[i]; gr += d[i + 1]; bl += d[i + 2]; n++;
           }
         }
-        r = Math.round(r / n); gr = Math.round(gr / n); bl = Math.round(bl / n);
+        r = quantize(r / n); gr = quantize(gr / n); bl = quantize(bl / n);
         for (y = by; y < ye; y++) {
           for (x = bx; x < xe; x++) {
             i = (y * w + x) * 4;
@@ -177,7 +183,7 @@
     var r = rectOf(d);
     if (tool === "rect") return { type: "rect", x: r.x, y: r.y, w: r.w, h: r.h, colour: cssVar(colour), width: STROKES[stroke] * unit };
     if (tool === "pixelate") {
-      return { type: "pixelate", x: r.x, y: r.y, w: r.w, h: r.h, block: Math.max(12, Math.round(Math.max(c.width, c.height) / 60)) };
+      return { type: "pixelate", x: r.x, y: r.y, w: r.w, h: r.h, block: Math.max(20, Math.round(Math.max(c.width, c.height) / 50)) };
     }
     return { type: "crop", x: r.x, y: r.y, w: r.w, h: r.h };
   }

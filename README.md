@@ -11,6 +11,8 @@ one SQLite file, no accounts, no cloud.
 - **HTTP evidence**: raw request/response pairs for each finding (the Burp extension will send these)
 - **Screenshots**: PNG/JPEG images per finding, numbered as figures across the report (type is checked
   from the file's bytes; SVG is rejected). Exports embed them, so the HTML/PDF/Markdown stay self-contained
+- **Screenshot editor**: crop, arrows, boxes and irreversible pixelation of secrets, right in the browser; the
+  untouched original is kept and can be restored at any time
 - **Confidence** per finding (certain / probable / unknown)
 - **Report metadata**: prepared by (company) and contact, report version, report date, version history table
 - **PDF from LaTeX**: the default PDF template is LaTeX (typeset by Tectonic, installed with ptreport);
@@ -98,6 +100,16 @@ This opens <http://127.0.0.1:5055/> in your browser. Options:
   issues left out unless you tick them), review the findings and targets found, tick what to keep. Targets that
   are already in the report (same address) are reused; imported findings start as "Open" with a history entry
   naming the scanner. XML is parsed with entity declarations rejected (no XXE, no entity expansion).
+- **Screenshot editor** (finding → Screenshots → **Edit**): pick a tool in the toolbar and drag on the image.
+  **Arrow** and **Box** use one of four colours (red, accent, yellow, white) and an S/M/L stroke; **Pixelate**
+  replaces the region with large flat blocks (the hidden text cannot be recovered from the saved image — use it for
+  tokens, cookies and personal data); **Crop** selects a rectangle, **Apply crop** (or Enter) cuts it. Undo/redo
+  with the buttons or Ctrl+Z / Ctrl+Shift+Z (Ctrl+Y); A / B / P / C switch tools; Esc or Cancel closes without
+  saving. **Save** uploads the result as a PNG (JPEG if a PNG would exceed 10 MB); the server checks it is a real
+  PNG/JPEG within the upload limit and no larger than the original. The thumbnail then shows **Edited**, an
+  *original* link and **Restore original**, which brings the upload back and discards the edit. Exports
+  (HTML/Markdown/PDF) show the edited image; the original stays in ptreport, in JSON backups and in duplicated or
+  retest reports (it is **not** gone from ptreport — delete the screenshot to remove both).
 - **Retest**: on a report, **Create retest report** copies targets, findings (with evidence and screenshots),
   structure and CWE texts into a new report linked to the original, with a **Retest summary** section first. Set
   *Retest result* (fixed / partially fixed / not fixed / not tested), date and notes on each finding; a change is

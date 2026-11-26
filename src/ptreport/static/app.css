@@ -100,6 +100,28 @@ span.label { display: block; margin-bottom: var(--sp-2); font-size: var(--fs-sm)
 .note-search { display: flex; gap: var(--sp-2); } .note-search .input { flex: 1 1 auto; min-width: 0; }
 .steps { display: grid; gap: var(--sp-1); padding-left: var(--sp-5); margin: 0; }
 
+/* Screenshot editor (finding page): "Edited" badge on thumbnails and the editor dialog */
+.shot-img { position: relative; }
+.shot-badge { position: absolute; top: var(--sp-2); left: var(--sp-2); min-height: 22px; gap: var(--sp-1); font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--c-accent); background: var(--c-surface); border-color: color-mix(in srgb, var(--c-accent) 60%, var(--c-line)); box-shadow: var(--shadow-overlay); }
+.shot-badge .icon { width: 12px; height: 12px; }
+.shot-actions:not(:has(> :not([hidden]))) { display: none; }
+.modal.modal-editor { width: min(1320px, calc(100vw - 2 * var(--sp-4))); }
+.modal-editor h2 [data-editor-name]:not(:empty)::before { content: " · "; }
+.editor-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); padding: var(--sp-2) var(--sp-4); border-bottom: 1px solid var(--c-line); background: var(--c-surface); }
+.editor-toolbar .seg-btn { gap: var(--sp-2); }
+.editor-toolbar .swatch { display: block; width: 14px; height: 14px; border-radius: 50%; background: var(--sw); box-shadow: 0 0 0 1px var(--c-ground); }
+.editor-toolbar [data-colour="--c-danger-strong"] { --sw: var(--c-danger-strong); }
+.editor-toolbar [data-colour="--c-accent"] { --sw: var(--c-accent); }
+.editor-toolbar [data-colour="--c-sev-medium"] { --sw: var(--c-sev-medium); }
+.editor-toolbar [data-colour="--c-text"] { --sw: var(--c-text); }
+.editor-toolbar [data-colour][aria-pressed="true"] { background: var(--c-line); }
+.editor-toolbar [data-colour][aria-pressed="true"] .swatch { box-shadow: 0 0 0 2px var(--c-line), 0 0 0 4px var(--c-text); }
+.editor-toolbar [data-colour]:disabled .swatch { opacity: 0.4; }
+.editor-stage { display: flex; align-items: center; justify-content: center; padding: var(--sp-4); overflow: hidden; }
+.editor-canvas { display: block; cursor: crosshair; touch-action: none; box-shadow: 0 0 0 1px var(--c-line), var(--shadow-overlay); }
+.editor-foot { justify-content: space-between; align-items: center; }
+.editor-foot .editor-hint, .editor-foot .field-error { flex: 1 1 24rem; margin: 0; }
+
 /* Writing assistant (local Ollama) */
 .field-head { display: flex; align-items: center; gap: var(--sp-3); min-height: var(--h-sm); }
 .field-head > label { font-size: var(--fs-sm); font-weight: var(--fw-semibold); }

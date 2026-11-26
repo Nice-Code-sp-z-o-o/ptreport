@@ -13,7 +13,7 @@ from datetime import date
 import sqlite3
 from typing import Any
 
-from ptreport import ids
+from ptreport import ai, ids
 from ptreport.db import transaction
 from ptreport.validation import DEFAULT_BRAND_COLOR, SEVERITY_RANK
 
@@ -356,6 +356,25 @@ def set_latex_template(conn: sqlite3.Connection, source: str | None) -> None:
         conn.execute("DELETE FROM settings WHERE key = 'latex_template'")
     else:
         save_settings(conn, {"latex_template": source})
+
+
+AI_DEFAULT_URL = ai.DEFAULT_URL
+
+
+def get_ai_settings(conn: sqlite3.Connection) -> dict:
+    """Local writing assistant (Ollama): off by default."""
+    stored = {r["key"]: r["value"] for r in conn.execute(
+        "SELECT key, value FROM settings WHERE key IN ('ai_enabled', 'ai_url', 'ai_model')")}
+    return {
+        "enabled": stored.get("ai_enabled") == "1",
+        "url": stored.get("ai_url") or AI_DEFAULT_URL,
+        "model": stored.get("ai_model") or "",
+    }
+
+
+def set_ai_settings(conn: sqlite3.Connection, data: dict) -> None:
+    save_settings(conn, {"ai_enabled": "1" if data["enabled"] else "0", "ai_url": data["url"],
+                         "ai_model": data["model"]})
 
 
 def save_settings(conn: sqlite3.Connection, values: dict) -> None:

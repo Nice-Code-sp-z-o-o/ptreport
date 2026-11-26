@@ -237,6 +237,16 @@ MIGRATIONS: list[str] = [
     );
     CREATE INDEX idx_report_notes_report ON report_notes(report_id, pinned, updated_at);
     """,
+    # 12: reserved - this number is assigned to a feature developed on another branch; when that branch
+    # is merged its migration replaces this no-op placeholder (keep 13 below unchanged).
+    "",
+    # 13: screenshot editor - the untouched original of an edited screenshot (NULL = never edited)
+    """
+    ALTER TABLE attachments ADD COLUMN original_mime TEXT;
+    ALTER TABLE attachments ADD COLUMN original_data BLOB;
+    ALTER TABLE attachments ADD COLUMN original_sha256 TEXT;
+    ALTER TABLE attachments ADD COLUMN edited_at TEXT;
+    """,
 ]
 
 

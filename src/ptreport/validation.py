@@ -29,6 +29,7 @@ LONG = 200_000
 HTTP_MESSAGE_MAX = 5_000_000
 IMAGE_MAX_BYTES = 10 * 1024 * 1024
 IMAGE_MAX_PER_FINDING = 50
+IMAGE_MAX_SIDE = 20_000  # pixels; an edited screenshot can never be larger than its original either
 
 _CONTROL_CHARS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 _PREFIX_RE = re.compile(r"^[A-Z][A-Z0-9]{0,9}$")
@@ -393,6 +394,67 @@ def validate_attachment(caption: Any, data: bytes | None) -> tuple[dict, dict]:
             v.clean["mime"] = mime
             v.clean["data"] = data
     return v.clean, v.errors
+
+
+_JPEG_SOF = {0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7, 0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF}
+
+
+def image_dimensions(data: bytes) -> tuple[int, int] | None:
+    """(width, height) read from a PNG IHDR or a JPEG SOF segment; None when the header is malformed."""
+    mime = sniff_image(data)
+    if mime == "image/png":
+        if len(data) < 33 or data[12:16] != b"IHDR":
+            return None
+        width, height = int.from_bytes(data[16:20], "big"), int.from_bytes(data[20:24], "big")
+        return (width, height) if width and height else None
+    if mime == "image/jpeg":
+        pos = 2
+        while pos + 4 <= len(data):
+            if data[pos] != 0xFF:
+                return None
+            marker = data[pos + 1]
+            if marker == 0xFF:  # fill byte
+                pos += 1
+                continue
+            if marker in (0xD8, 0x01) or 0xD0 <= marker <= 0xD7:  # markers without a length
+                pos += 2
+                continue
+            if marker in (0xD9, 0xDA):  # end of image / start of scan before any frame header
+                return None
+            length = int.from_bytes(data[pos + 2:pos + 4], "big")
+            if length < 2:
+                return None
+            if marker in _JPEG_SOF:
+                if pos + 9 > len(data):
+                    return None
+                height = int.from_bytes(data[pos + 5:pos + 7], "big")
+                width = int.from_bytes(data[pos + 7:pos + 9], "big")
+                return (width, height) if width and height else None
+            pos += 2 + length
+    return None
+
+
+def validate_edited_image(data: bytes | None, source: bytes) -> tuple[dict, dict]:
+    """An edited screenshot from the in-browser editor: a real PNG/JPEG within the upload limits whose
+    dimensions are sane and not larger than the image it was made from (the editor only crops)."""
+    clean, errors = validate_attachment("", data)
+    if errors:
+        return {}, errors
+    size = image_dimensions(clean["data"])
+    if size is None:
+        return {}, {"file": "The edited image is damaged (its header cannot be read)."}
+    if clean["mime"] == "image/png" and not clean["data"].endswith(b"IEND\xaeB`\x82"):
+        return {}, {"file": "The edited image is incomplete."}
+    width, height = size
+    if width > IMAGE_MAX_SIDE or height > IMAGE_MAX_SIDE:
+        return {}, {"file": f"The edited image must be at most {IMAGE_MAX_SIDE} pixels wide and high."}
+    limit = image_dimensions(source)
+    if limit is not None and (width > limit[0] or height > limit[1]):
+        return {}, {"file": f"The edited image ({width}×{height}) is larger than the original "
+                            f"({limit[0]}×{limit[1]})."}
+    clean.pop("caption", None)
+    clean["width"], clean["height"] = width, height
+    return clean, {}
 
 
 # Built-in section kinds; "text" is a custom section whose body is stored with it.

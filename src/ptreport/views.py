@@ -47,6 +47,7 @@ from ptreport.validation import (
     SEVERITIES,
     TARGET_KINDS,
     TEMPLATE_FIELDS,
+    validate_edited_image,
     validate_evidence,
     validate_attachment,
     validate_brand_color,
@@ -399,6 +400,44 @@ def attachment_file(attachment_id: int):
     return response
 
 
+@bp.get("/attachments/<int:attachment_id>/original")
+def attachment_original(attachment_id: int):
+    """The untouched upload of an edited screenshot."""
+    attachment = _attachment_or_404(attachment_id, with_data=True)
+    if attachment["original_data"] is None:
+        abort(404)
+    response = Response(attachment["original_data"], mimetype=attachment["original_mime"])
+    response.headers["Content-Security-Policy"] = "default-src 'none'; sandbox"
+    response.headers["Content-Disposition"] = "inline"
+    return response
+
+
+@bp.post("/attachments/<int:attachment_id>/edit")
+def attachment_edit(attachment_id: int):
+    """Save the image produced by the screenshot editor (fetch + FormData, answers with JSON)."""
+    attachment = _attachment_or_404(attachment_id, with_data=True)
+    upload = request.files.get("file")
+    data = upload.read(IMAGE_MAX_BYTES + 1) if upload else None
+    source = attachment["original_data"] if attachment["original_data"] is not None else attachment["data"]
+    clean, errors = validate_edited_image(data, source)
+    if errors:
+        return jsonify(error="invalid", message=errors["file"]), 422
+    repo.save_edited_attachment(get_db(), attachment, clean["mime"], clean["data"])
+    flash("Screenshot saved. The original is kept; use Restore original to bring it back.", "success")
+    return jsonify(ok=True, width=clean["width"], height=clean["height"],
+                   redirect=url_for("web.finding_edit", finding_id=attachment["finding_id"], _anchor="screenshots"))
+
+
+@bp.post("/attachments/<int:attachment_id>/restore")
+def attachment_restore(attachment_id: int):
+    attachment = _attachment_or_404(attachment_id)
+    if repo.restore_attachment_original(get_db(), attachment):
+        flash("Original screenshot restored.", "success")
+    else:
+        flash("This screenshot has not been edited.", "error")
+    return redirect(url_for("web.finding_edit", finding_id=attachment["finding_id"], _anchor="screenshots"))
+
+
 @bp.post("/attachments/<int:attachment_id>/caption")
 def attachment_caption(attachment_id: int):
     attachment = _attachment_or_404(attachment_id)
@@ -627,6 +666,7 @@ def report_export(report_id: int, fmt: str, inline: bool = False):
     elif fmt == "md":
         body, mimetype, ext = export.to_markdown(ctx), "text/markdown", "md"
     elif fmt == "json":
+        export.add_originals(get_db(), ctx)  # backups keep the untouched originals of edited screenshots
         doc = export.to_json(ctx)
         # working notes travel with the backup, but are not report content (not in the fingerprint)
         doc["notes"] = [{f: n[f] for f in repo.NOTE_FIELDS} for n in reversed(repo.list_notes(get_db(), report_id))]

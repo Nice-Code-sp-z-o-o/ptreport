@@ -3,11 +3,9 @@
 from __future__ import annotations
 
 import base64
-import io
 from datetime import date
 import json
 import re
-import zipfile
 from urllib.parse import quote
 
 from flask import (
@@ -23,7 +21,7 @@ from flask import (
     url_for,
 )
 
-from ptreport import export, ids, importers, latex, repo
+from ptreport import ai, export, ids, importers, latex, repo
 from ptreport.cvss_service import METRIC_DEFINITIONS, CvssInvalid, score_vector
 from ptreport.cwe import catalogue_version as cwe_catalogue_version
 from ptreport.cwe import cwe_choices, cwe_name, cwe_reference
@@ -57,6 +55,7 @@ from ptreport.validation import (
     validate_attachment,
     validate_file,
     validate_uploads,
+    validate_ai_settings,
     validate_brand_color,
     validate_cwe_note,
     validate_finding,
@@ -265,6 +264,8 @@ def _finding_form(report: dict, finding: dict | None, values: dict, errors: dict
             history_errors=history_errors or {},
             retest_results=RETEST_RESULTS,
             templates=repo.list_templates(get_db()) if finding is None else [],
+            ai_enabled=repo.get_ai_settings(get_db())["enabled"],
+            ai_fields=AI_FIELD_LABELS,
         ),
         status,
     )
@@ -692,38 +693,18 @@ def report_preview(report_id: int):
 def report_export(report_id: int, fmt: str, inline: bool = False):
     if fmt not in ("html", "md", "json", "pdf", "tex"):
         abort(404)
-    ctx = export.build_context(get_db(), report_id, inline_images=True)
-    if ctx is None:
+    try:
+        rendered = export.render_download(get_db(), report_id, fmt)
+    except latex.LatexError as exc:
+        current_app.logger.warning("PDF export of report %s failed: %s", report_id, exc)
+        return render_template("export/pdf_error.html", report=_report_or_404(report_id), error=str(exc),
+                               log=exc.log), 500
+    if rendered is None:
         abort(404)
-    title = ctx["report"]["title"]
-    if fmt == "html":
-        css = current_app.open_resource("static/report.css").read().decode("utf-8")
-        body = render_template("export/report.html", inline_css=css, preview=False, **ctx)
-        mimetype, ext = "text/html", "html"
-    elif fmt == "md":
-        body, mimetype, ext = export.to_markdown(ctx), "text/markdown", "md"
-    elif fmt == "json":
-        file_ids = [x["id"] for f in ctx["findings"] for x in f["files"]]
-        doc = export.to_json(ctx, file_blobs=repo.file_data(get_db(), file_ids))
-        # working notes travel with the backup, but are not report content (not in the fingerprint)
-        doc["notes"] = [{f: n[f] for f in repo.NOTE_FIELDS} for n in reversed(repo.list_notes(get_db(), report_id))]
-        body = json.dumps(doc, ensure_ascii=False, indent=2)
-        mimetype, ext = "application/json", "json"
-    else:
-        try:
-            source, files = latex.render(ctx, repo.get_latex_template(get_db()))
-            if fmt == "pdf":
-                pdf = latex.compile_pdf(source, files, volatile=ctx["generated_at"])
-                body, mimetype, ext = pdf, "application/pdf", "pdf"
-            else:
-                body, mimetype, ext = _tex_zip(source, files), "application/zip", "zip"
-        except latex.LatexError as exc:
-            current_app.logger.warning("PDF export of report %s failed: %s", report_id, exc)
-            return render_template("export/pdf_error.html", report=ctx["report"], error=str(exc),
-                                   log=exc.log), 500
+    body, mimetype, filename = rendered
     response = Response(body, mimetype=mimetype)
     disposition = "inline" if inline else "attachment"
-    response.headers["Content-Disposition"] = f'{disposition}; filename="{export.safe_filename(title, ext)}"'
+    response.headers["Content-Disposition"] = f'{disposition}; filename="{filename}"'
     if fmt == "pdf":
         # the browser's own PDF viewer renders it; the HTML page policy would block that viewer
         response.headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'self'"
@@ -733,16 +714,6 @@ def report_export(report_id: int, fmt: str, inline: bool = False):
             "default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'"
         )
     return response
-
-
-def _tex_zip(source: str, files: dict[str, bytes]) -> bytes:
-    buffer = io.BytesIO()
-    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
-        archive.writestr("report.tex", source)
-        for name, data in files.items():
-            archive.writestr(name, data)
-        archive.writestr("README.txt", "Compile with: tectonic report.tex  (or: xelatex report.tex, twice)\n")
-    return buffer.getvalue()
 
 
 @bp.route("/import", methods=["GET", "POST"])
@@ -777,7 +748,8 @@ def _id_examples(id_format: str, start: int, prefix: str) -> list[str]:
     return [ids.render(id_format, prefix, start + i, None) for i in range(3)]
 
 
-def _settings_page(values: dict, errors: dict, status: int = 200):
+def _settings_page(values: dict, errors: dict, status: int = 200, *,
+                   ai_values: dict | None = None, ai_errors: dict | None = None):
     current = repo.get_settings(get_db())
     return (
         render_template(
@@ -793,6 +765,8 @@ def _settings_page(values: dict, errors: dict, status: int = 200):
             label_rows=_label_rows(),
             label_overrides=repo.get_label_overrides(get_db()),
             latex_engine=latex.find_engine(),
+            ai_values=ai_values if ai_values is not None else repo.get_ai_settings(get_db()),
+            ai_errors=ai_errors or {},
         ),
         status,
     )
@@ -972,6 +946,146 @@ def settings_regenerate_token():
     return redirect(url_for("web.settings"))
 
 
+# ------------------------------------------------------- writing assistant --
+
+AI_FIELD_LABELS = {"description": "Description", "impact": "Impact", "technical_details": "Technical details",
+                   "remediation": "Remediation"}
+AI_MAX_BODY = 256 * 1024
+
+
+def _ai_json(message: str, status: int):
+    return jsonify(error=message), status
+
+
+def _ai_bucket():
+    bucket = current_app.extensions.get("ai_bucket")
+    if bucket is None:
+        bucket = ai.TokenBucket(current_app.config.get("AI_RATE_CAPACITY", 6),
+                                current_app.config.get("AI_RATE_PER_SECOND", 1 / 10))
+        current_app.extensions["ai_bucket"] = bucket
+    return bucket
+
+
+def _ai_payload() -> dict | None:
+    if (request.content_length or 0) > AI_MAX_BODY:
+        return None
+    data = request.get_json(silent=True)
+    return data if isinstance(data, dict) else None
+
+
+@bp.post("/settings/ai")
+def settings_ai():
+    data, errors = validate_ai_settings(request.form)
+    if errors:
+        values = {"enabled": request.form.get("enabled") == "1", "url": request.form.get("url", ""),
+                  "model": request.form.get("model", "")}
+        return _settings_page({k: str(v) for k, v in repo.get_settings(get_db()).items()}, {}, 422,
+                              ai_values=values, ai_errors=errors)
+    repo.set_ai_settings(get_db(), data)
+    flash("AI assistant " + ("enabled." if data["enabled"] else "settings saved (assistant is off)."), "success")
+    return redirect(url_for("web.settings", _anchor="ai-assistant"))
+
+
+def _ai_target_from_request() -> tuple:
+    data = _ai_payload()
+    if data is None:
+        return None, _ai_json("Send a JSON object with url and model.", 400)
+    url = data.get("url")
+    model = data.get("model", "")
+    if not isinstance(url, str) or not isinstance(model, str):
+        return None, _ai_json("url and model must be text.", 400)
+    url = ai.normalise_url(url)
+    problem = ai.url_problem(url)
+    if problem:
+        return None, _ai_json(problem, 400)
+    model = model.strip()
+    if model and ai.model_problem(model):
+        return None, _ai_json(ai.model_problem(model), 400)
+    return url, model
+
+
+@bp.post("/settings/ai/models")
+def settings_ai_models():
+    url, model = _ai_target_from_request()
+    if url is None:
+        return model
+    try:
+        models = ai.list_models(url)
+    except ai.AiError as exc:
+        return _ai_json(exc.message, exc.status)
+    return jsonify(models=models)
+
+
+@bp.post("/settings/ai/test")
+def settings_ai_test():
+    url, model = _ai_target_from_request()
+    if url is None:
+        return model
+    try:
+        message = ai.test_connection(url, model)
+    except ai.AiError as exc:
+        return _ai_json(exc.message, exc.status)
+    return jsonify(message=message)
+
+
+@bp.post("/ai/assist")
+def ai_assist():
+    settings = repo.get_ai_settings(get_db())
+    if not settings["enabled"]:
+        return _ai_json("The AI assistant is turned off. Enable it in Settings.", 404)
+    data = _ai_payload()
+    if data is None:
+        return _ai_json("Request too large or not a JSON object.", 413 if (request.content_length or 0) > AI_MAX_BODY
+                        else 400)
+    report_id = data.get("report_id")
+    if not isinstance(report_id, int) or isinstance(report_id, bool):
+        return _ai_json("report_id is required.", 400)
+    report = repo.get_report(get_db(), report_id)
+    if report is None:
+        return _ai_json("Report not found.", 404)
+    field = data.get("field")
+    action = data.get("action")
+    if field not in ai.FIELDS:
+        return _ai_json("Unknown field.", 400)
+    if action not in ai.ACTIONS:
+        return _ai_json("Unknown action.", 400)
+    texts: dict[str, str] = {}
+    for name in ("title", "cwe", "severity", *ai.CONTEXT_FIELDS):
+        value = data.get(name, "")
+        if not isinstance(value, str):
+            return _ai_json(f"{name} must be text.", 400)
+        limit = ai.MAX_TITLE_CHARS if name == "title" else 20 if name in ("cwe", "severity") else ai.MAX_FIELD_CHARS
+        if len(value) > limit:
+            if name in ai.CONTEXT_FIELDS and not (name == field and action != "draft"):
+                value = value[:limit]  # other fields are only context: a long one is cut, not refused
+            else:
+                label = AI_FIELD_LABELS.get(name, name.capitalize())
+                return _ai_json(f"{label} is too long for the assistant (at most {limit} characters).", 413)
+        texts[name] = value.replace("\x00", "").strip()
+    if action == "draft" and not texts["title"]:
+        return _ai_json("Write the vulnerability title first: the draft is based on it.", 422)
+    if action != "draft" and not texts[field]:
+        return _ai_json(f"{AI_FIELD_LABELS[field]} is empty; there is nothing to work on.", 422)
+    if not _ai_bucket().take():
+        return _ai_json("Too many assistant requests. Wait a few seconds and try again.", 429)
+
+    lang = report["language"] if report["language"] in ai.SYSTEM_PROMPT else "en"
+    cwe = texts["cwe"].upper()
+    if cwe and not cwe.startswith("CWE-"):
+        cwe = "CWE-" + cwe
+    severity = SEVERITY_LABELS[lang].get(texts["severity"], "") if texts["severity"] else ""
+    req = ai.AssistRequest(field=field, action=action, report_language=lang, title=texts["title"],
+                           cwe=cwe if cwe_name(cwe) else "", cwe_name=cwe_name(cwe) if cwe else "",
+                           severity=severity, fields={k: texts[k] for k in ai.CONTEXT_FIELDS})
+    current_app.logger.info("AI assist: action=%s field=%s model=%s", action, field, settings["model"])
+    try:
+        text = ai.chat(settings["url"], settings["model"], ai.build_messages(req),
+                       timeout=current_app.config.get("AI_TIMEOUT", ai.TIMEOUT_SECONDS))
+    except ai.AiError as exc:
+        return _ai_json(exc.message, exc.status)
+    return jsonify(text=text, field=field, action=action)
+
+
 # ------------------------------------------------------------------- cvss --
 
 @bp.get("/cvss/score")
@@ -1115,49 +1229,12 @@ def report_duplicate(report_id: int):
 
 # ---------------------------------------------------------- scanner import --
 
-SCANNER_LABELS = {"burp": "Burp Suite (XML)", "nessus": "Nessus (.nessus)", "nmap": "Nmap (XML, targets only)",
-                  "zap": "OWASP ZAP (XML)", "openvas": "OpenVAS / Greenbone (XML)"}
-MAX_IMPORTED_FINDINGS = 2000
-MAX_IMPORTED_TARGETS = 5000
+SCANNER_LABELS = importers.LABELS
 
 
 def _scan_form(report: dict, errors: list[str], status: int = 200):
     return render_template("reports/scan_import.html", report=report, errors=errors, formats=importers.FORMATS,
                            format_labels=SCANNER_LABELS), status
-
-
-def _clean_scan(parsed: dict) -> dict:
-    """Run the importer output through the same validators as manual input; drop what does not pass."""
-    warnings = list(parsed.get("warnings", []))
-    findings = []
-    for f in parsed["findings"][:MAX_IMPORTED_FINDINGS]:
-        clean, errors = validate_finding({**f, "status": "open"}, target_ids_raw=[])
-        if errors:
-            warnings.append(f"Skipped \"{f.get('title', '')[:80]}\": " + "; ".join(errors.values()))
-            continue
-        evidence = []
-        for e in f.get("evidence", []):
-            ev, ev_errors = validate_evidence({**e, "source": "import"})
-            if not ev_errors:
-                evidence.append(ev)
-        clean.pop("target_ids", None)
-        findings.append({**clean, "key": f["key"], "target_keys": list(f.get("target_keys", [])),
-                         "evidence": evidence})
-    if len(parsed["findings"]) > MAX_IMPORTED_FINDINGS:
-        warnings.append(f"Only the first {MAX_IMPORTED_FINDINGS} findings were read.")
-    targets = []
-    for t in parsed["targets"][:MAX_IMPORTED_TARGETS]:
-        clean, errors = validate_target(t)
-        if errors:
-            warnings.append(f"Skipped target \"{t.get('name', '')[:80]}\": " + "; ".join(errors.values()))
-            continue
-        targets.append({**clean, "key": t["key"]})
-    if len(parsed["targets"]) > MAX_IMPORTED_TARGETS:
-        warnings.append(f"Only the first {MAX_IMPORTED_TARGETS} targets were read.")
-    known = {t["key"] for t in targets}
-    for f in findings:
-        f["target_keys"] = [k for k in f["target_keys"] if k in known]
-    return {"format": parsed["format"], "targets": targets, "findings": findings, "warnings": warnings}
 
 
 @bp.route("/reports/<int:report_id>/scan-import", methods=["GET", "POST"])
@@ -1178,7 +1255,7 @@ def scan_import(report_id: int):
         parsed = importers.parse(data, fmt or None, include_info=request.form.get("include_info") == "1")
     except importers.ImportError_ as exc:
         return _scan_form(report, [str(exc)], 422)
-    cleaned = _clean_scan(parsed)
+    cleaned = importers.clean(parsed)
     if not cleaned["targets"] and not cleaned["findings"]:
         return _scan_form(report, ["Nothing to import: the file has no hosts or issues"
                                    + (" (informational issues were left out)" if fmt != "nmap" else "") + "."]

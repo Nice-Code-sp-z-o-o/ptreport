@@ -466,3 +466,12 @@ def test_editing_a_finding_keeps_its_origin(client, csrf, make_report, api_heade
 ])
 def test_host_key(address, expected):
     assert proposals.host_key(address) == expected
+
+
+def test_merge_select_preselects_only_a_likely_duplicate(client, make_report, make_finding, api_headers):
+    report_id = make_report()
+    make_finding(report_id, title="Totally unrelated finding", severity="low")
+    _queue(client, report_id, _finding_proposal(cwe="", targets=[]), api_headers)
+    html = client.get(f"/reports/{report_id}/ai-queue").get_data(as_text=True)
+    assert '<option value="" disabled selected>Merge into…</option>' in html
+    assert "Looks like" not in html

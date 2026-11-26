@@ -1279,6 +1279,12 @@ def list_proposals(conn: sqlite3.Connection, report_id: int, status: str = "", l
     return [_proposal(r) for r in conn.execute(sql, params)]
 
 
+def recently_decided_proposals(conn: sqlite3.Connection, report_id: int, limit: int = 20) -> list[dict]:
+    return [_proposal(r) for r in conn.execute(
+        "SELECT * FROM ai_proposals WHERE report_id = ? AND status != 'pending' ORDER BY decided_at DESC, id DESC "
+        "LIMIT ?", (report_id, limit))]
+
+
 def count_proposals(conn: sqlite3.Connection, report_id: int, status: str = "pending") -> int:
     return conn.execute("SELECT COUNT(*) FROM ai_proposals WHERE report_id = ? AND status = ?",
                         (report_id, status)).fetchone()[0]

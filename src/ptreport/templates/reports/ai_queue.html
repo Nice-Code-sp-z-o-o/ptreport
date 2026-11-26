@@ -11,6 +11,7 @@
 {%- endmacro %}
 
 {% macro finding_options(selected) -%}
+  {% if not selected %}<option value="" disabled selected>Merge into…</option>{% endif %}
   {% for f in findings %}<option value="{{ f.id }}"{% if selected and f.id == selected %} selected{% endif %}>{{ f.display_id }} · {{ f.title|truncate(60) }}</option>{% endfor %}
 {%- endmacro %}
 

@@ -1091,11 +1091,11 @@ def ai_queue(report_id: int):
         items = [{**p, "preview": proposals.preview(p, findings)} for p in pending if p["kind"] == kind]
         if items:
             groups.append({"kind": kind, "label": proposals.KIND_LABELS[kind], "entries": items})
-    decided = [p for p in repo.list_proposals(get_db(), report_id) if p["status"] != "pending"][-20:]
+    decided = repo.recently_decided_proposals(get_db(), report_id)
     return render_template("reports/ai_queue.html", report=report, groups=groups, pending_count=len(pending),
                            import_url=url_for("web.ai_results_import", report_id=report_id),
                            findings=findings, counts=repo.proposal_status_counts(get_db(), report_id),
-                           decided=[{**p, "preview": proposals.preview(p, findings)} for p in reversed(decided)],
+                           decided=[{**p, "preview": proposals.preview(p, findings)} for p in decided],
                            severities=SEVERITIES)
 
 

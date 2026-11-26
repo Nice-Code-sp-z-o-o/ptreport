@@ -666,5 +666,5 @@ def preview(proposal: dict, findings: list[dict]) -> dict:
         out["excerpt"] = _excerpt(data.get("notes", ""))
     else:
         out["title"] = data.get("name", "")
-        out["excerpt"] = data.get("address", "")
+        out["excerpt"] = _excerpt(data.get("description", ""))
     return out

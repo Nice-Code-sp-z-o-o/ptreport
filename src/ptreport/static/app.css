@@ -160,7 +160,7 @@ button.menu-item:disabled { color: var(--c-muted); cursor: not-allowed; }
 .proposal-details > .stack { margin-top: var(--sp-3); padding: var(--sp-4); background: var(--c-ground); border: 1px solid var(--c-line); border-radius: var(--radius); }
 .proposal-details pre.http, .proposal-details pre.code { background: var(--c-surface); }
 .proposal-actions { align-items: center; }
-.merge-form { display: inline-flex; gap: var(--sp-2); align-items: center; }
+form.merge-form { display: inline-flex; gap: var(--sp-2); align-items: center; }
 .select-sm .select { min-height: var(--h-sm); max-width: 22rem; font-size: var(--fs-sm); }
 .dup-hint { display: flex; gap: var(--sp-2); align-items: flex-start; max-width: var(--measure); margin: 0; padding: var(--sp-2) var(--sp-3); font-size: var(--fs-sm); color: var(--c-text); background: color-mix(in srgb, var(--c-sev-medium) 10%, transparent); border: 1px solid color-mix(in srgb, var(--c-sev-medium) 40%, var(--c-line)); border-radius: var(--radius); }
 .dup-hint > .icon { flex: none; margin-top: 2px; color: var(--c-sev-medium); }
@@ -169,7 +169,7 @@ button.menu-item:disabled { color: var(--c-muted); cursor: not-allowed; }
 .is-revoked td { color: var(--c-muted); }
 .code-meta { display: flex; flex-wrap: wrap; gap: var(--sp-2) var(--sp-3); align-items: center; }
 .code-meta code { overflow-wrap: anywhere; }
-.kind-label { display: inline-flex; align-items: center; gap: var(--sp-2); }
+.kind-label { display: inline-flex; align-items: center; gap: var(--sp-2); vertical-align: middle; }
 .code-edit > summary { list-style: none; width: fit-content; }
 .code-edit > summary::-webkit-details-marker { display: none; }
 .code-edit[open] { padding: var(--sp-3); background: var(--c-surface); border: 1px solid var(--c-line); border-radius: var(--radius-lg); }

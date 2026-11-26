@@ -7,7 +7,9 @@ one SQLite file, no accounts, no cloud.
 - **Targets**: web apps, APIs, hosts, network ranges, mobile apps…
 - **Findings**: title, automatic numbering (`ACME-001`, `ACME-002`, …, with your own prefix),
   clickable **CVSS 4.0 / 3.1 / 3.0 / 2.0** calculator, **CWE** (autocomplete), description,
-  impact, technical details, **PoC**, remediation, references, affected targets, status
+  impact, technical details, **PoC**, remediation, references, affected targets, status: *Open*,
+  *Partially fixed*, *Not fixed*, *Fixed*, *Risk accepted*, *Won't fix*, *False positive*, *Not a bug*,
+  *Cannot verify* (the first three count as open)
 - **HTTP evidence**: raw request/response pairs for each finding (the Burp extension will send these)
 - **Screenshots**: PNG/JPEG images per finding, numbered as figures across the report (type is checked
   from the file's bytes; SVG is rejected). Exports embed them, so the HTML/PDF/Markdown stay self-contained

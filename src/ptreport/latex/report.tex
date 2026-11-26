@@ -231,7 +231,7 @@
 \BLOCK{macro findings_table()}
 \BLOCK{if findings}
 \rowcolors{2}{soft}{white}
-\begin{longtable}{@{}W{.06}W{.13}W{.36}W{.14}W{.18}>{\raggedright\arraybackslash}W{.13}@{}}
+\begin{longtable}{@{}W{.06}W{.12}W{.32}W{.14}W{.17}>{\raggedright\arraybackslash\hyphenpenalty=10000\exhyphenpenalty=10000}W{.19}@{}}
 \rowcolor{brand}\ptHead{\VAR{L.no}} & \ptHead{\VAR{L.id}} & \ptHead{\VAR{L.title}} & \ptHead{\VAR{L.severity}} & \ptHead{\VAR{cvss_header}} & \ptHead{\VAR{L.status}} \\
 \endhead
 \BLOCK{for f in findings}

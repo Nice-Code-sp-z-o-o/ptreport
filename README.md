@@ -101,7 +101,7 @@ This opens <http://127.0.0.1:5055/> in your browser. Options:
 
 - **Finding IDs**: the format is set in **Settings → Finding IDs** as a template: `{prefix}` (the report's
   prefix), `{n}` or `{n:4}` (the number, zero padded), `{year}` (year of testing), e.g. `{prefix}-{n:4}` gives
-  `LT-0002`. You can also set the first number and the default prefix for new reports. A report can override the
+  `SEC-0002`. You can also set the first number and the default prefix for new reports. A report can override the
   format in its details, and a single finding can have its own ID (e.g. when copying an existing report).
 - **Numbering**: a new finding gets the next number. Reorder with ↑/↓, or click
   **Renumber by severity** (Critical first, then by CVSS score). Deleting a finding closes the gap.

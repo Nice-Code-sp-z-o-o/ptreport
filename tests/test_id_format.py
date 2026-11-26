@@ -6,7 +6,7 @@ from ptreport.db import connect
 
 @pytest.mark.parametrize("template,prefix,n,year,expected", [
     ("{prefix}-{n:3}", "ACME", 1, None, "ACME-001"),
-    ("{prefix}-{n:4}", "LT", 2, None, "LT-0002"),
+    ("{prefix}-{n:4}", "SEC", 2, None, "SEC-0002"),
     ("{prefix}_{n}", "VULN", 12, None, "VULN_12"),
     ("{year}/{prefix}/{n:2}", "PT", 7, 2026, "2026/PT/07"),
     ("#{n}", "X", 5, None, "#5"),

@@ -84,7 +84,7 @@ def test_figures_in_exports(client, csrf, make_report, make_finding):
 
 
 def test_report_metadata_versions_and_confidence(client, csrf, make_report, make_finding):
-    report_id = make_report(vendor_name="LogicalTrust", vendor_contact="www.logicaltrust.net",
+    report_id = make_report(vendor_name="Example Security", vendor_contact="www.example.com",
                             report_version="1.0", report_date="2023-07-12")
     make_finding(report_id, confidence="certain")
     assert client.post(f"/reports/{report_id}/versions", data={
@@ -96,7 +96,7 @@ def test_report_metadata_versions_and_confidence(client, csrf, make_report, make
     assert bad.status_code == 422
 
     html = client.get(f"/reports/{report_id}/export/html").get_data(as_text=True)
-    for text in ("LogicalTrust", "www.logicaltrust.net", "2023-07-12", "Report version history",
+    for text in ("Example Security", "www.example.com", "2023-07-12", "Report version history",
                  "Final version after the retest", "Confidence", "Certain"):
         assert text in html, text
 

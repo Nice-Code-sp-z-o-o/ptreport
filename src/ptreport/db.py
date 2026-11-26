@@ -82,7 +82,7 @@ MIGRATIONS: list[str] = [
     );
     CREATE INDEX idx_http_evidence_finding ON http_evidence(finding_id, position);
     """,
-    # 2: custom finding id (e.g. LT-0002); severity_manual is unused since severity became always manual
+    # 2: custom finding id (e.g. SEC-0002); severity_manual is unused since severity became always manual
     #    (kept because DROP COLUMN needs SQLite 3.35+)
     """
     ALTER TABLE findings ADD COLUMN external_id TEXT NOT NULL DEFAULT '';

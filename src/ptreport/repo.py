@@ -411,7 +411,7 @@ def save_settings(conn: sqlite3.Connection, values: dict) -> None:
 
 
 def finding_display_id(report: dict, finding: dict, settings: dict | None = None) -> str:
-    """The finding's own ID when set (e.g. LT-0002); otherwise the report's or the global ID format."""
+    """The finding's own ID when set (e.g. SEC-0002); otherwise the report's or the global ID format."""
     if finding.get("external_id"):
         return finding["external_id"]
     settings = settings or {"id_format": ids.DEFAULT_TEMPLATE, "id_start": ids.DEFAULT_START}
